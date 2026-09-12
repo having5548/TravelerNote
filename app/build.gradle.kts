@@ -90,19 +90,25 @@ dependencies {
 }
 
 /**
- * 打包后把签名 APK 复制到仓库根目录的 apk/：
+ * 打包后把**已签名**的 APK 复制到仓库根目录的 apk/：
  *   app/build/outputs/apk/release/app-release.apk → apk/app-release.apk
- * 挂在 assembleRelease 之后自动执行，无需额外命令。
+ * 只匹配 app-release.apk：没有签名配置时 AGP 产出的是 app-release-unsigned.apk，
+ * 会被这里排除，避免把未签名包当成发布包。
  */
 val apkRepoDir = rootProject.layout.projectDirectory.dir("apk")
 
 tasks.register<Copy>("copyReleaseApkToRepo") {
     from(layout.buildDirectory.dir("outputs/apk/release")) {
-        include("*.apk")
+        include("app-release.apk")
     }
     into(apkRepoDir)
 }
 
 tasks.matching { it.name == "assembleRelease" }.configureEach {
+    doFirst {
+        if (!hasReleaseSigning) {
+            logger.warn("注意：未找到 keystore.properties，release 不会签名；产物为 app-release-unsigned.apk，也不会复制到 apk/")
+        }
+    }
     finalizedBy("copyReleaseApkToRepo")
 }
