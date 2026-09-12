@@ -13,6 +13,20 @@
     <string name="logout">退出登录</string>
 
     <string name="settings">设置</string>
+    <string name="settings_account">账户</string>
+    <string name="account_switch_hint">点击下方账号即可切换，切换后自动重启应用</string>
+    <string name="account_active">当前使用中</string>
+    <string name="account_no_credential">凭证已失效，建议重新登录</string>
+    <string name="account_none">未登录</string>
+    <string name="account_add">添加账号</string>
+    <string name="account_refresh">刷新凭证</string>
+    <string name="account_delete">删除</string>
+    <string name="account_delete_confirm">确定删除账号「%1$s」？该账号在本机保存的凭证会被移除。</string>
+    <string name="account_refresh_done">已刷新 %1$d 个账号的凭证</string>
+    <string name="logout_active">退出登录</string>
+    <string name="logout_confirm">确定退出「%1$s」？仅清除本机凭证，其他账号不受影响。</string>
+    <string name="sign_auto_badge">自动</string>
+    <string name="community_sign_action">手动签到</string>
     <string name="login_qr">扫码登录</string>
     <string name="login_phone">手机号登录</string>
     <string name="login_manual">手动粘贴 Cookie</string>
@@ -51,6 +65,12 @@
 
     <string name="settings_theme">主题颜色</string>
     <string name="settings_background">软件背景</string>
+    <string name="settings_bg_effect">背景材质</string>
+    <string name="effect_none">无（原图清晰）</string>
+    <string name="effect_frost">磨砂 · 云母风格（图片保持清晰，只加雾面）</string>
+    <string name="effect_acrylic">亚克力（轻模糊 + 雾面）</string>
+    <string name="effect_frost_level">磨砂程度（雾面浓淡）</string>
+    <string name="effect_acrylic_level">亚克力程度（模糊与雾面强度）</string>
     <string name="background_none">无（默认纯色）</string>
     <string name="background_random">每日随机图片</string>
     <string name="background_launcher">米游社官方启动器背景</string>
@@ -66,13 +86,40 @@
     <string name="characters_empty">暂无展示角色</string>
     <string name="characters_fail">获取失败，请检查网络后重试</string>
     <string name="characters_need_login">请先登录并绑定原神账号</string>
+    <string name="characters_refresh">刷新角色数据</string>
+    <string name="characters_risk">账号被米游社风控拦截（5003），请过一段时间再试</string>
+    <string name="characters_need_captcha">需要人机验证（1034）且未通过，请重试</string>
+    <string name="characters_constellation">命之座</string>
+    <string name="characters_element">元素</string>
+    <string name="characters_rarity">稀有度</string>
+    <string name="characters_fetter">好感度</string>
+    <string name="characters_weapon">武器</string>
+    <string name="characters_artifacts">圣遗物</string>
+    <string name="characters_no_artifacts">未装备圣遗物</string>
+    <string name="characters_panel">面板</string>
+    <string name="characters_talents">天赋</string>
+    <string name="characters_detail_failed">角色详情获取失败</string>
+    <string name="characters_relic_pieces">圣遗物 %1$d 件</string>
     <string name="settings_verify">验证</string>
     <string name="settings_about">关于</string>
     <string name="settings_github">GitHub</string>
     <string name="github_handle">having5548</string>
     <string name="settings_version">版本</string>
-    <string name="version_name">1.1.3</string>
+    <string name="version_name">1.1.4</string>
     <string name="disclaimer_title">免责声明</string>
+
+    <string name="onboarding_title">使用前请仔细阅读</string>
+    <string name="onboarding_intro">「旅行者便签」是个人开发的非官方第三方工具，与米哈游没有任何关系。请先阅读下面的免责声明与隐私政策，并在页面底部输入指定文字以表示同意。</string>
+    <string name="onboarding_disclaimer_title">一、免责声明</string>
+    <string name="onboarding_disclaimer">1. 本项目为个人开发的非官方第三方工具，与米哈游 / 上海米哈游影铁科技有限公司及其关联公司没有任何关系，未获得任何形式的授权、认可或支持。\n\n2. 「米游社」「原神」等名称、商标、游戏素材与相关接口的权利均归米哈游所有，本项目仅出于个人学习与技术研究目的使用。\n\n3. 本项目仅供个人学习自用：禁止任何商业用途、二次售卖、代练代签牟利，禁止大规模自动化操作。\n\n4. 自动签到、自动领取社区奖励等行为可能违反米哈游的服务条款，可能导致账号被限制、冻结或封禁。请自行评估风险，一切后果由使用者自行承担，作者不承担任何形式的责任。\n\n5. 游戏接口与网页结构随时可能变化，本工具可能失效、返回异常数据或被风控拦截；作者不保证可用性，也不提供任何担保。\n\n6. 若本项目无意中侵犯了你的权益，请通过 GitHub Issue 联系，核实后会立即删除相关内容或下架仓库。</string>
+    <string name="onboarding_privacy_title">二、隐私政策</string>
+    <string name="onboarding_privacy">1. 我们收集什么：本应用不收集你的账号、密码或任何个人信息；不包含统计、广告或崩溃上报 SDK。\n\n2. 数据保存在哪里：登录凭证（cookie_token / ltoken / stoken 等）与随机生成的设备标识只保存在本机应用私有目录中；已关闭系统备份（allowBackup=false），不会被云备份带走。多账号凭证同样只存本机、彼此隔离。\n\n3. 数据会发送给谁：\n· 米哈游官方接口：签到、实时便签、战绩、角色数据都必须请求官方服务器，请求会携带你的登录凭证与设备标识 —— 这是功能必需。\n· 网页工具页：底部「旅行工具」内嵌的是米游社官方网页，加载时会注入本机凭证以便免登录；网页自身的数据处理由米哈游负责。\n· 无感验证（可选、默认关闭）：若你自行开启并填写了第三方打码接口地址，遇到人机验证时会把验证码参数（gt / challenge）发送给该服务，地址与风险由你自行选择并承担。\n\n4. 你的控制权：可在「设置 → 账户」删除任一账号在本机的凭证，或在系统设置里清除应用数据，即可彻底移除全部本地数据。\n\n5. 权限说明：仅申请网络与网络状态权限（INTERNET / ACCESS_NETWORK_STATE），用于访问上述接口；不申请存储、定位、通讯录、相机等敏感权限。\n\n6. 未成年人：请在监护人指导下使用本应用。</string>
+    <string name="onboarding_input_label">请完整输入下面这句话以表示同意：</string>
+    <string name="onboarding_agree_phrase">我已仔细阅读免责声明与隐私政策，并同意上述条款</string>
+    <string name="onboarding_input_hint">在此输入上面这句话</string>
+    <string name="onboarding_agree">同意并继续</string>
+    <string name="onboarding_disagree">不同意并退出</string>
+    <string name="onboarding_agree_mismatch">输入不一致，请完整、准确地输入上面那句话</string>
     <string name="agree">同意并继续</string>
     <string name="disagree">不同意并退出</string>
     <string name="disclaimer">免责声明\n\n本应用仅供个人学习与技术交流使用，不得用于任何商业用途或大规模自动化操作。自动签到可能违反米哈游相关服务条款，可能导致账号被限制或封禁，请自行评估风险并自行承担一切后果。应用不会收集、上传或存储你的账号密码；登录凭证仅保存在本机应用私有目录中。使用本应用即表示你已知晓并同意上述内容。</string>
@@ -145,4 +192,7 @@
     <string name="abyss_floor_star">第%1$d层 %2$d/%3$d★</string>
     <string name="theater_summary">难度 %1$d · 最高第 %2$d 幕 · 勋章 %3$d · 幻剧之花 %4$d</string>
     <string name="theater_empty">本期暂无剧诗记录</string>
+
+    <string name="webview_open_browser">用浏览器打开</string>
+    <string name="tools_record_risk">账号存在风险（5003），暂无战绩数据。可稍后重试，或先用下面的网页入口查看；本应用已按官方流程注册设备指纹，若持续出现请隔一段时间再试。</string>
 </resources>

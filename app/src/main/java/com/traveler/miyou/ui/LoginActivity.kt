@@ -33,6 +33,11 @@ import kotlin.coroutines.suspendCoroutine
 
 class LoginActivity : AppCompatActivity() {
 
+    companion object {
+        /** 由「设置 → 添加账号」进入：登录成功后把凭证存到一个全新账号里。 */
+        const val EXTRA_ADD_ACCOUNT = "extra_add_account"
+    }
+
     private lateinit var binding: ActivityLoginBinding
     private lateinit var store: CookieStore
     private var qrJob: Job? = null
@@ -81,7 +86,13 @@ class LoginActivity : AppCompatActivity() {
         binding.manualCookieBtn.setOnClickListener { showManualDialog() }
 
         binding.tabs.getTabAt(0)?.select()
-        Disclaimer.showOnce(this)
+
+        // 首次进入先走引导页
+        if (!com.traveler.miyou.store.SettingsStore(this).onboardingDone) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
     }
 
     private fun showQrPanel() {
@@ -270,6 +281,11 @@ class LoginActivity : AppCompatActivity() {
     // ---------- 登录成功 ----------
 
     private fun onLoginTokens(stoken: String, mid: String, stuid: String) {
+        // 从「添加账号」进来的：先把登录结果落到一个全新账号里，其他账号保持原样
+        if (intent.getBooleanExtra(EXTRA_ADD_ACCOUNT, false)) {
+            com.traveler.miyou.store.AccountStore(this).createActive()
+            store = CookieStore(this)
+        }
         store.saveLoginTokens(stoken, mid, stuid)
         lifecycleScope.launch {
             withContext(Dispatchers.IO) {

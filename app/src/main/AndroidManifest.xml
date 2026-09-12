@@ -44,5 +44,12 @@
         <activity
             android:name=".ui.CaptchaActivity"
             android:exported="false" />
+
+        <!-- 首次进入的引导页：免责声明 + 隐私政策 + 手动输入同意语 -->
+        <activity
+            android:name=".ui.OnboardingActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

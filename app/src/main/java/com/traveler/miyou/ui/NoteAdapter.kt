@@ -44,7 +44,6 @@ sealed class HomeItem {
 
 class NoteAdapter(
     private val onRefresh: () -> Unit,
-    private val onLogout: () -> Unit,
     private val onCommunitySign: () -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -52,7 +51,6 @@ class NoteAdapter(
     private var headerBinding: ItemHeaderBinding? = null
     private var headerStatus: String = ""
 
-    private var footerBinding: ItemFooterBinding? = null
     private var communityStatus: String = ""
     private var communityEnabled: Boolean = true
 
@@ -71,7 +69,7 @@ class NoteAdapter(
     fun setCommunityStatus(text: String, enabled: Boolean = true) {
         communityStatus = text
         communityEnabled = enabled
-        footerBinding?.let {
+        headerBinding?.let {
             it.communityStatus.text = text
             it.communityBtn.isEnabled = enabled
         }
@@ -100,20 +98,18 @@ class NoteAdapter(
                 val vh = holder as HeaderVH
                 headerBinding = vh.binding
                 vh.binding.signStatus.text = headerStatus
+                // 社区签到（手动）就在游戏签到卡片里，状态与按钮一起绑定
+                vh.binding.communityBtn.setOnClickListener { onCommunitySign() }
+                if (communityStatus.isNotBlank()) {
+                    vh.binding.communityStatus.text = communityStatus
+                }
+                vh.binding.communityBtn.isEnabled = communityEnabled
             }
             is HomeItem.Note -> (holder as NoteVH).bind(item)
             is HomeItem.Calendar -> (holder as CalendarVH).bind(item)
             is HomeItem.Footer -> {
                 val vh = holder as FooterVH
-                footerBinding = vh.binding
                 vh.binding.refreshBtn.setOnClickListener { onRefresh() }
-                vh.binding.logoutBtn.setOnClickListener { onLogout() }
-                vh.binding.communityBtn.setOnClickListener { onCommunitySign() }
-                // 还没拿到状态时保留布局里的提示文案
-                if (communityStatus.isNotBlank()) {
-                    vh.binding.communityStatus.text = communityStatus
-                }
-                vh.binding.communityBtn.isEnabled = communityEnabled
             }
         }
     }

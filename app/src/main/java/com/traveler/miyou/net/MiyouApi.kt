@@ -334,23 +334,27 @@ object MiyouApi {
         return sb.toString().trimEnd(';')
     }
 
-    /** 通过提瓦特小助手获取角色列表。 */
-    fun fetchLelaerCharacters(uid: String): List<LelaerChar> {
-        val url = "https://api.lelaer.com/ys/getPlayerRecord.php?uid=$uid"
-        val resp = Http.get(url, mapOf("User-Agent" to ApiConst.UA_DESKTOP))
-        return parseLelaerCharacters(resp.body)
-    }
+    // ---------- 角色数据已改为官方战绩接口（见 net/Characters.kt） ----------
 
     // ---------- 战绩（api-takumi-record）：签名方式对齐 Snap.Hutao ----------
 
     /**
      * 战绩类请求头。与 Snap.Hutao 的 GameRecordClient 一致：
-     * DS 用 X4 盐的 Gen2，且参与签名的 query 要按 & 拆开后字母序重新拼接。
+     * DS 用 X4 盐的 Gen2，且参与签名的 query 要按 & 拆开后字母序重新拼接；
+     * POST 请求的 body 也要参与签名（见 net/Characters.kt、net/CardVerification.kt）。
      */
-    private fun recordHeaders(cookie: String, deviceId: String, deviceFp: String, query: String): MutableMap<String, String> {
+    internal fun recordHeaders(
+        cookie: String,
+        deviceId: String,
+        deviceFp: String,
+        query: String,
+        body: String = ""
+    ): MutableMap<String, String> {
         val sortedQuery = query.split('&').sorted().joinToString("&")
-        val headers = baseHeaders(deviceId, "5", ApiConst.RECORD_VERSION, ApiConst.UA_DESKTOP)
-        headers["DS"] = DS.gen2(ApiConst.X4_SALT, "", sortedQuery)
+        // x-rpc-app_version 必须与 UA 中的版本号一致（胡桃工具箱两边用同一个版本常量）；
+        // 版本对不上容易被风控判为异常环境，战绩接口会直接返回 5003。
+        val headers = baseHeaders(deviceId, "5", ApiConst.BBS_VERSION, ApiConst.UA_DESKTOP)
+        headers["DS"] = DS.gen2(ApiConst.X4_SALT, body, sortedQuery)
         headers["Referer"] = "${ApiConst.WEBSTATIC}/app/community-game-records/index.html"
         headers["x-rpc-device_fp"] = deviceFp
         headers["x-rpc-tool_verison"] = "v5.0.1-ys"

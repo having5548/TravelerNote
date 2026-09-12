@@ -56,6 +56,14 @@
                 android:layout_marginTop="1dp"
                 android:textColor="?android:attr/textColorSecondary"
                 android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/relics"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

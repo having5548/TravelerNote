@@ -20,6 +20,12 @@
     <color name="calendar_cell">#F7F8FC</color>
     <color name="calendar_cell_done">#E9ECF5</color>
 
+    <!-- 启用磨砂/亚克力时的半透明 surface（浅色） -->
+    <color name="surface_glass">#D9FFFFFF</color>
+
+    <!-- 有背景图时状态栏压的薄雾（浅色），与工具栏遮罩顶部同色，避免顶部一条原图太突兀 -->
+    <color name="scrim_status_bar">#D9FFFFFF</color>
+
     <!-- 主题强调色 -->
     <color name="accent_blue">#5B6CF0</color>
     <color name="accent_teal">#0FA3A3</color>

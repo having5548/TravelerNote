@@ -16,15 +16,22 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.traveler.miyou.R
 import com.traveler.miyou.databinding.ActivitySettingsBinding
 import com.traveler.miyou.net.BackgroundEngine
+import com.traveler.miyou.store.AccountRefresher
+import com.traveler.miyou.store.AccountStore
+import com.traveler.miyou.store.CookieStore
 import com.traveler.miyou.store.SettingsStore
+import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var settings: SettingsStore
+    private lateinit var accounts: AccountStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,9 +48,16 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         settings = SettingsStore(this)
+        accounts = AccountStore(this)
 
+        setupAccounts()
         buildThemeRow()
         setupBackground()
+        setupBackgroundEffect()
+        // 有背景图时给工具栏加渐变遮罩，否则返回箭头/标题看不清
+        ThemeHelper.applyToolbarScrim(this)
+        // 设置页也应用同一份背景与材质，避免只有主界面"全屏"、进来就断掉
+        BackgroundEngine.apply(this)
 
         binding.toolbar.setNavigationOnClickListener { finish() }
 
@@ -72,6 +86,101 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    // ---------------- 账户（多账号） ----------------
+
+    private fun setupAccounts() {
+        renderAccounts()
+
+        binding.accountRefreshBtn.setOnClickListener {
+            binding.accountRefreshBtn.isEnabled = false
+            lifecycleScope.launch {
+                val count = AccountRefresher.refreshAll(this@SettingsActivity)
+                binding.accountRefreshBtn.isEnabled = true
+                renderAccounts()
+                MaterialAlertDialogBuilder(this@SettingsActivity)
+                    .setTitle(R.string.account_refresh)
+                    .setMessage(getString(R.string.account_refresh_done, count))
+                    .setPositiveButton(R.string.close, null)
+                    .show()
+            }
+        }
+
+        binding.accountAddBtn.setOnClickListener {
+            startActivity(
+                Intent(this, LoginActivity::class.java)
+                    .putExtra(LoginActivity.EXTRA_ADD_ACCOUNT, true)
+            )
+        }
+
+        binding.logoutBtn.setOnClickListener { confirmLogout() }
+    }
+
+    private fun renderAccounts() {
+        val active = accounts.activeId()
+        binding.accountActive.text =
+            if (active.isNullOrBlank()) getString(R.string.account_none) else accounts.label(active)
+
+        binding.accountList.removeAllViews()
+        accounts.ids().forEach { id ->
+            val row = layoutInflater.inflate(R.layout.item_account, binding.accountList, false)
+            row.findViewById<TextView>(R.id.accountLabel).text = accounts.label(id)
+            row.findViewById<TextView>(R.id.accountState).text = when {
+                !accounts.hasCredential(id) -> getString(R.string.account_no_credential)
+                id == active -> getString(R.string.account_active)
+                else -> ""
+            }
+            row.setOnClickListener {
+                if (id != active) {
+                    accounts.setActive(id)
+                    // 账号变了，所有页面都要重新读凭证：重启应用最稳妥
+                    restartApp()
+                }
+            }
+            row.findViewById<TextView>(R.id.accountDelete).setOnClickListener {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.account_delete)
+                    .setMessage(getString(R.string.account_delete_confirm, accounts.label(id)))
+                    .setPositiveButton(R.string.confirm) { _, _ ->
+                        val wasActive = id == active
+                        accounts.remove(id)
+                        if (wasActive && accounts.activeId().isNullOrBlank()) {
+                            startActivity(Intent(this, LoginActivity::class.java))
+                            finishAffinity()
+                        } else {
+                            renderAccounts()
+                        }
+                    }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+            }
+            binding.accountList.addView(row)
+        }
+    }
+
+    private fun confirmLogout() {
+        val active = accounts.activeId()
+        if (active.isNullOrBlank()) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.logout_active)
+            .setMessage(getString(R.string.logout_confirm, accounts.label(active)))
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                CookieStore(applicationContext, active).clear()
+                accounts.remove(active)
+                val next = accounts.ids().firstOrNull { accounts.hasCredential(it) }
+                if (next == null) {
+                    startActivity(Intent(this, LoginActivity::class.java))
+                    finishAffinity()
+                } else {
+                    accounts.setActive(next)
+                    restartApp()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    // ---------------- 背景 ----------------
+
     private fun setupBackground() {
         val radios = intArrayOf(
             binding.bg0.id, binding.bg1.id, binding.bg2.id
@@ -85,6 +194,41 @@ class SettingsActivity : AppCompatActivity() {
                 BackgroundEngine.invalidate(this, index)
             }
         }
+    }
+
+    /**
+     * 背景材质：磨砂 / 亚克力二选一，且两种材质各有自己的程度滑杆
+     * （互不影响，切回另一种时保留上次调好的程度）。
+     */
+    private fun setupBackgroundEffect() {
+        val radios = intArrayOf(binding.effect0.id, binding.effect1.id, binding.effect2.id)
+        val max = BackgroundEngine.MAX_LEVEL.toFloat()
+
+        binding.effectGroup.check(radios.getOrElse(settings.bgEffect) { radios[0] })
+        binding.frostSlider.valueTo = max
+        binding.acrylicSlider.valueTo = max
+        binding.frostSlider.value = settings.frostLevel.toFloat().coerceIn(0f, max)
+        binding.acrylicSlider.value = settings.acrylicLevel.toFloat().coerceIn(0f, max)
+        updateEffectVisibility()
+
+        binding.effectGroup.setOnCheckedChangeListener { _, checkedId ->
+            val index = radios.indexOfFirst { it == checkedId }
+            if (index >= 0 && settings.bgEffect != index) {
+                settings.bgEffect = index
+                updateEffectVisibility()
+            }
+        }
+        binding.frostSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) settings.frostLevel = value.toInt()
+        }
+        binding.acrylicSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) settings.acrylicLevel = value.toInt()
+        }
+    }
+
+    private fun updateEffectVisibility() {
+        binding.frostSlider.visibility = if (settings.bgEffect == 1) View.VISIBLE else View.GONE
+        binding.acrylicSlider.visibility = if (settings.bgEffect == 2) View.VISIBLE else View.GONE
     }
 
     private fun updateCaptchaFieldsVisibility() {
@@ -134,7 +278,7 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** 切换主题后强制重启应用以完整刷新主题。 */
+    /** 切换主题/账号后强制重启应用以完整刷新。 */
     private fun restartApp() {
         val intent = Intent(this, MainActivity::class.java).addFlags(
             Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

@@ -39,9 +39,25 @@ class SettingsStore(context: Context) {
         get() = sp.getInt("background_source", 0)
         set(value) = sp.edit().putInt("background_source", value).apply()
 
-    var disclaimerShown: Boolean
-        get() = sp.getBoolean("disclaimer_shown", false)
-        set(value) = sp.edit().putBoolean("disclaimer_shown", value).apply()
+    /** 背景材质：0=无（原图清晰） 1=磨砂（云母风格，图片保持清晰+雾面） 2=亚克力（轻模糊+雾面）。 */
+    var bgEffect: Int
+        get() = sp.getInt("bg_effect", 0)
+        set(value) = sp.edit().putInt("bg_effect", value).apply()
+
+    /** 磨砂程度（0-10）：雾面浓淡，与亚克力程度各自独立保存。 */
+    var frostLevel: Int
+        get() = sp.getInt("bg_frost_level", 3)
+        set(value) = sp.edit().putInt("bg_frost_level", value).apply()
+
+    /** 亚克力程度（0-10）：模糊与雾面强度，与磨砂程度各自独立保存。 */
+    var acrylicLevel: Int
+        get() = sp.getInt("bg_acrylic_level", 3)
+        set(value) = sp.edit().putInt("bg_acrylic_level", value).apply()
+
+    /** 是否已完成首次引导页（免责声明 + 隐私政策 + 输入同意语）。 */
+    var onboardingDone: Boolean
+        get() = sp.getBoolean("onboarding_done", false)
+        set(value) = sp.edit().putBoolean("onboarding_done", value).apply()
 
     var charSource: Int
         get() = sp.getInt("char_source", 0)

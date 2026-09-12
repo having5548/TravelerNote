@@ -16,37 +16,4 @@
         app:icon="@drawable/ic_refresh"
         app:iconGravity="textStart"
         app:iconPadding="8dp" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/communityBtn"
-        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/community_sign"
-        android:textSize="15sp"
-        app:cornerRadius="14dp"
-        app:icon="@drawable/ic_sign"
-        app:iconGravity="textStart"
-        app:iconPadding="8dp" />
-
-    <TextView
-        android:id="@+id/communityStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:gravity="center"
-        android:text="@string/community_sign_hint"
-        android:textColor="?android:attr/textColorSecondary"
-        android:textSize="12sp" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/logoutBtn"
-        style="@style/Widget.MaterialComponents.Button.TextButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="@string/logout"
-        android:textColor="?android:attr/textColorSecondary"
-        android:textSize="14sp" />
 </LinearLayout>

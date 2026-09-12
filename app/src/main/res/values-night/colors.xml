@@ -3,4 +3,10 @@
     <!-- 旅行日历格子（深色） -->
     <color name="calendar_cell">#1B1E2A</color>
     <color name="calendar_cell_done">#262A38</color>
+
+    <!-- 启用磨砂/亚克力时的半透明 surface（深色） -->
+    <color name="surface_glass">#CC1A1D26</color>
+
+    <!-- 有背景图时状态栏压的薄雾（深色） -->
+    <color name="scrim_status_bar">#CC000000</color>
 </resources>

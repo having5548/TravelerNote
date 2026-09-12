@@ -56,4 +56,9 @@
         <item name="colorSecondary">@color/accent_green</item>
         <item name="colorSecondaryVariant">@color/accent_green</item>
     </style>
+    <!-- 启用磨砂/亚克力时叠加：让卡片等 surface 半透明，背景效果能透出来 -->
+    <style name="ThemeOverlay.TravelerNote.Glass" parent="">
+        <item name="colorSurface">@color/surface_glass</item>
+        <item name="android:colorBackground">@android:color/transparent</item>
+    </style>
 </resources>

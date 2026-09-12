@@ -62,6 +62,21 @@ object ApiConst {
     val SPIRAL_ABYSS_URL: String get() = "$TAKUMI_RECORD_API/game_record/app/genshin/api/spiralAbyss"
     val ROLE_COMBAT_URL: String get() = "$TAKUMI_RECORD_API/game_record/app/genshin/api/role_combat"
 
+    /** 「我的角色」：POST 角色列表（body 参与 DS 签名）。 */
+    val CHARACTER_LIST_URL: String get() = "$TAKUMI_RECORD_API/game_record/app/genshin/api/character/list"
+
+    /** 「我的角色」详情：POST 面板属性 + 圣遗物 + 天赋（body 带 character_ids）。 */
+    val CHARACTER_DETAIL_URL: String get() = "$TAKUMI_RECORD_API/game_record/app/genshin/api/character/detail"
+
+    /** 战绩接口 1034 人机验证（card wapi，对齐胡桃工具箱 CardClient）。 */
+    val CARD_CREATE_VERIFICATION_URL: String get() =
+        "$TAKUMI_RECORD_API/game_record/app/card/wapi/createVerification?is_high=true"
+    val CARD_VERIFY_VERIFICATION_URL: String get() =
+        "$TAKUMI_RECORD_API/game_record/app/card/wapi/verifyVerification"
+
+    /** 设备指纹注册（公开数据接口，无需登录）。 */
+    const val DEVICE_FP_URL = "https://public-data-api.mihoyo.com/device-fp/api/getFp"
+
     // 请求头模板
     const val UA_MOBILE = "okhttp/4.9.3"
     val UA_WEB: String get() =

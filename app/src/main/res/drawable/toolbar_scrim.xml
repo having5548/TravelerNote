@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 工具栏遮罩：有背景图时保证标题/返回箭头仍然清晰（浅色主题用白雾） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:endColor="#00FFFFFF"
+        android:startColor="#D9FFFFFF"
+        android:type="linear" />
+</shape>

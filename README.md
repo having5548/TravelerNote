@@ -35,6 +35,8 @@
 - **社区签到（手动）**：`apihub/app/api/signIn`（gids=2）；遇 1034 走 `misc/api/createVerification` → 极验 → `misc/api/verifyVerification` 换取 challenge，再带 `x-rpc-challenge` 重试。今日是否已签用只读接口 `getUserMissionsState`（mission 58）判断，**自动流程不会调用签到接口**。
 - **签到奖励日历**：`event/luna/home` 返回本月每天的奖励（`icon/name/cnt`），配合 `event/luna/info` 的 `total_sign_day` / `is_sign` 标出已领取进度与今日可领的那一格。
 - 凭证归一化：`stoken → cookie_token / ltoken`，存于应用私有 SharedPreferences（已从备份排除）。
+- **战绩（深境螺旋 / 幻想真境剧诗）**：`api-takumi-record` 的 `spiralAbyss` / `role_combat`；DS 用 X4 盐 Gen2 且参与签名的 query 按字母序重排。设备指纹按 [Snap.Hutao](https://github.com/DGP-Studio/Snap.Hutao)（MIT）的流程处理：先本地随机 13 位 hex，再经 `public-data-api/device-fp/api/getFp` 注册并缓存 7 天 —— 未经注册的指纹容易被风控判定为异常环境并返回 `retcode 5003`。
+- **网页工具**：工具页里的米游社入口用**应用内 WebView** 打开，加载前会把已缓存的登录凭证（含 `*_v2` 别名与 `domain`）写进 WebView 的 cookie，因此战绩 / 祈愿 / 通行证等页面无需二次登录；右上角仍可切换「用浏览器打开」。
 
 ## 构建与签名
 

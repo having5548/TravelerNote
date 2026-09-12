@@ -294,80 +294,7 @@ fun parseCookieAccountInfo(raw: String): CookieAccountInfo? {
     }
 }
 
-// ---------- 提瓦特小助手（lelaer） ----------
-
-data class LelaerChar(
-    val name: String,
-    val level: String,
-    val roleImg: String,
-    val weapon: String,
-    val weaponLevel: String,
-    val weaponClass: String,
-    val artifacts: String,
-    val hp: String,
-    val attack: String,
-    val crit: String,
-    val critDmg: String,
-    val recharge: String,
-    val detail: String
-)
-
-fun parseLelaerCharacters(raw: String): List<LelaerChar> {
-    return try {
-        val obj = JSONObject(raw)
-        if (obj.optInt("code", -1) != 200) return emptyList()
-        val arr = obj.optJSONObject("result")?.optJSONArray("role_data") ?: return emptyList()
-        val list = ArrayList<LelaerChar>(arr.length())
-        for (i in 0 until arr.length()) {
-            val it = arr.optJSONObject(i) ?: continue
-            val sb = StringBuilder()
-            sb.append("武器：").append(it.optString("weapon", ""))
-                .append("  Lv.").append(it.optString("weapon_level", ""))
-                .append(' ').append(it.optString("weapon_class", ""))
-            sb.append("\n生命值 ").append(it.optString("hp", ""))
-                .append("  攻击力 ").append(it.optString("attack", ""))
-                .append("  防御力 ").append(it.optString("defend", ""))
-            sb.append("\n暴击率 ").append(it.optString("crit", ""))
-                .append("  暴击伤害 ").append(it.optString("crit_dmg", ""))
-                .append("  元素充能 ").append(it.optString("recharge", ""))
-            sb.append("\n元素精通 ").append(it.optString("mastery", it.optString("element_mastery", "")))
-            it.optJSONArray("artifacts_detail")?.let { arr2 ->
-                for (j in 0 until arr2.length()) {
-                    val a = arr2.optJSONObject(j) ?: continue
-                    sb.append("\n\n【").append(a.optString("artifacts_name", ""))
-                        .append("】").append(a.optString("artifacts_type", ""))
-                        .append(" +").append(a.optString("level", ""))
-                    sb.append("\n主词条 ").append(a.optString("maintips", ""))
-                        .append(' ').append(a.optString("mainvalue", ""))
-                    for (k in 1..4) {
-                        val t = a.optString("tips$k", "")
-                        if (t.isNotBlank()) sb.append("\n").append(t)
-                    }
-                }
-            }
-            list.add(
-                LelaerChar(
-                    name = it.optString("role", ""),
-                    level = it.optString("level", ""),
-                    roleImg = it.optString("role_img", ""),
-                    weapon = it.optString("weapon", ""),
-                    weaponLevel = it.optString("weapon_level", ""),
-                    weaponClass = it.optString("weapon_class", ""),
-                    artifacts = it.optString("artifacts", ""),
-                    hp = it.optString("hp", ""),
-                    attack = it.optString("attack", ""),
-                    crit = it.optString("crit", ""),
-                    critDmg = it.optString("crit_dmg", ""),
-                    recharge = it.optString("recharge", ""),
-                    detail = sb.toString()
-                )
-            )
-        }
-        list
-    } catch (e: Exception) {
-        emptyList()
-    }
-}
+// 角色数据已改为官方战绩接口，见 net/Characters.kt
 
 // ---------- 原神游戏每日签到（luna） ----------
 
@@ -517,6 +444,17 @@ fun parseVerificationPass(raw: String): VerificationPass? {
         if (obj.optInt("retcode", -1) != 0) return null
         val d = obj.optJSONObject("data") ?: return null
         VerificationPass(d.optString("challenge", ""))
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/** 解析 device-fp/api/getFp 回包里的 device_fp。 */
+fun parseDeviceFp(raw: String): String? {
+    return try {
+        val obj = JSONObject(raw)
+        if (obj.optInt("retcode", -1) != 0) return null
+        obj.optJSONObject("data")?.optString("device_fp", "")?.takeIf { it.isNotBlank() }
     } catch (e: Exception) {
         null
     }

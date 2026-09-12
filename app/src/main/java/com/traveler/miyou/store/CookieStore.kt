@@ -10,49 +10,75 @@ import java.util.UUID
 
 /**
  * 登录态与设备标识持久化。
+ *
+ * 凭证按账号隔离（`session_<id>`，见 [AccountStore]），设备标识全局共用（`device`），
+ * 这样同时缓存多个账号也不会互相串号，换账号时设备指纹保持不变。
  */
-class CookieStore(context: Context) {
+class CookieStore(context: Context, accountId: String? = null) {
 
-    private val sp: SharedPreferences =
-        context.getSharedPreferences("session", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val accounts = AccountStore(appContext)
 
-    // ---- 设备标识 ----
+    /** 账号级：登录凭证 + 角色缓存。accountId 为空时用当前账号（没有就新建）。 */
+    private val sp: SharedPreferences = appContext.getSharedPreferences(
+        AccountStore.prefsName(accountId ?: accounts.activeOrCreate()),
+        Context.MODE_PRIVATE
+    )
+
+    /** 设备级：与账号无关。 */
+    private val device: SharedPreferences =
+        appContext.getSharedPreferences("device", Context.MODE_PRIVATE)
+
+    // ---- 设备标识（全局共用） ----
     fun deviceId(): String {
-        var id = sp.getString("device_id", null)
+        var id = device.getString("device_id", null)
         if (id.isNullOrBlank()) {
             id = UUID.randomUUID().toString()
-            sp.edit().putString("device_id", id).apply()
+            device.edit().putString("device_id", id).apply()
         }
         return id
     }
 
     fun deviceFp(): String {
-        var fp = sp.getString("device_fp", null)
+        var fp = device.getString("device_fp", null)
         if (fp.isNullOrBlank()) {
             val hex = "0123456789abcdef"
             fp = buildString {
                 repeat(13) { append(hex[kotlin.random.Random.nextInt(16)]) }
             }
-            sp.edit().putString("device_fp", fp).apply()
+            device.edit().putString("device_fp", fp).apply()
         }
         return fp
     }
 
     fun deviceName(): String {
-        sp.getString("device_name", null)?.let { return it }
+        device.getString("device_name", null)?.let { return it }
         val name = (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).trim()
-        sp.edit().putString("device_name", name).apply()
+        device.edit().putString("device_name", name).apply()
         return name
     }
 
     fun deviceModel(): String {
-        sp.getString("device_model", null)?.let { return it }
+        device.getString("device_model", null)?.let { return it }
         val model = android.os.Build.MODEL.ifBlank { "Android" }
-        sp.edit().putString("device_model", model).apply()
+        device.edit().putString("device_model", model).apply()
         return model
     }
 
-    // ---- 登录态 ----
+    /** 已在官方注册过的设备指纹（7 天有效期），见 net/DeviceFp.kt。 */
+    fun registeredFp(): String? =
+        device.getString("device_fp_registered", null)?.takeIf { it.isNotBlank() }
+
+    fun registeredFpAt(): Long = device.getLong("device_fp_registered_at", 0L)
+
+    fun saveRegisteredFp(fp: String) {
+        device.edit()
+            .putString("device_fp_registered", fp)
+            .putLong("device_fp_registered_at", System.currentTimeMillis())
+            .apply()
+    }
+
+    // ---- 登录态（当前账号） ----
     fun isLoggedIn(): Boolean =
         !get("cookie_token").isNullOrBlank() && !get("account_id").isNullOrBlank()
 
@@ -65,6 +91,7 @@ class CookieStore(context: Context) {
     fun put(key: String, value: String) = sp.edit().putString(key, value).apply()
     fun remove(key: String) = sp.edit().remove(key).apply()
 
+    /** 只清当前账号的凭证，不影响其他账号。 */
     fun clear() = sp.edit().clear().apply()
 
     fun roleUid(): String? = get("role_uid")
@@ -216,6 +243,9 @@ class CookieStore(context: Context) {
 
         return !cookieToken().isNullOrBlank() && !accountId().isNullOrBlank()
     }
+
+    /** 后台统一刷新所有账号的凭证，避免长期不用导致 cookie 失效（由 AccountStore 节流）。 */
+    fun accountIdForDisplay(): String? = accountId()
 
     companion object {
         fun parseCookie(raw: String): Map<String, String> {
