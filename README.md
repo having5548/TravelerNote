@@ -5,6 +5,11 @@
 > **游戏签到（原神 luna）是自动的**：打开 App 就跑，奖励通过游戏内邮件发放。
 > **社区（论坛）签到是手动的**：只在首页点「社区签到」按钮时执行，绝不会自动触发。
 
+> ⚠️ **本项目是非官方第三方工具**：与米哈游 / 上海米哈游影铁科技有限公司及其关联公司
+> **没有任何关系，也未获得任何形式的授权、认可或支持**。「米游社」「原神」等名称、商标、
+> 游戏素材及相关接口的权利均归米哈游所有，本项目仅出于个人学习与技术研究目的而使用。
+> 自动签到可能违反米哈游的服务条款并带来账号风险，**使用后果由使用者自行承担**。
+
 ## 功能
 
 - 打开 App 自动执行原神游戏每日签到；已签到 / 首次绑定 / 需要验证都会在首页状态行说明
@@ -88,4 +93,35 @@ app/src/main/
 
 ## 免责声明
 
-本项目仅供学习交流，请勿用于任何商业用途或大规模自动化，遵守米哈游服务条款。
+- 本项目为**非官方**第三方工具，与米哈游 / 上海米哈游影铁科技有限公司及其关联公司**无任何关联**，
+  未获得任何形式的授权、认可或支持。「米游社」「原神」等名称、商标、游戏素材及相关接口的权利均归米哈游所有。
+- 本项目仅供**个人学习与技术研究**使用；**禁止**任何商业用途、二次售卖、代练代签牟利或大规模自动化操作。
+- 自动签到、自动完成社区任务等行为**可能违反米哈游的服务条款**，可能导致账号被限制、冻结或封禁。
+  **请自行评估风险，一切后果由使用者自行承担**；作者不对任何账号损失、数据丢失或封禁负责。
+- 应用不会收集或上传你的账号密码，登录凭证仅保存在本机应用私有目录中；
+  「我的角色」页会把游戏 UID 发送给第三方 `api.lelaer.com`，使用该页即表示你接受这一点。
+- 若本项目无意中侵犯了你的权益，请通过 Issue 联系，核实后会立即删除相关内容或下架本仓库。
+- **下载、安装或使用本项目（包括 Release 中的 APK）即表示你已阅读、理解并同意上述全部内容。**
+  如果你不同意，请不要使用。
+
+## 许可证
+
+本项目基于 **GNU General Public License v3.0** 发布，许可证全文见 [LICENSE](LICENSE)。
+
+```
+Copyright (C) 2026 having5548
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+```
+
+GPL-3.0 授予你对**代码**自由使用、修改与再分发的权利，但**不免除**上面「免责声明」中的
+使用限制与风险提示。再分发（包括修改后发布）时请保留版权声明、许可证全文与本免责声明，
+并同样以 GPL-3.0 开放源代码。
