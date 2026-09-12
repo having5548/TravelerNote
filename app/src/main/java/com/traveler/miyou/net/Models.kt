@@ -521,3 +521,183 @@ fun parseVerificationPass(raw: String): VerificationPass? {
         null
     }
 }
+
+// ---------- 战绩：深境螺旋 / 幻想真境剧诗（api-takumi-record，字段与 Snap.Hutao 对齐） ----------
+
+/** 战绩里的角色。 */
+data class RecordAvatar(
+    val id: Int,
+    val icon: String,
+    val level: Int,
+    val rarity: Int
+)
+
+data class AbyssBattle(val index: Int, val avatars: List<RecordAvatar>)
+
+data class AbyssLevel(
+    val index: Int,
+    val star: Int,
+    val maxStar: Int,
+    val battles: List<AbyssBattle>
+)
+
+data class AbyssFloor(
+    val index: Int,
+    val star: Int,
+    val maxStar: Int,
+    val levels: List<AbyssLevel>
+)
+
+/** 深境螺旋本期战绩。 */
+data class SpiralAbyss(
+    val totalStar: Int,
+    val maxFloor: String,
+    val totalBattleTimes: Int,
+    val totalWinTimes: Int,
+    val isUnlock: Boolean,
+    val floors: List<AbyssFloor>,
+    val message: String = ""
+)
+
+/** 幻想真境剧诗战绩。 */
+data class RoleCombat(
+    val hasData: Boolean,
+    val difficultyId: Int,
+    val maxRoundId: Int,
+    val medalNum: Int,
+    val coinNum: Int,
+    val avatars: List<RecordAvatar>,
+    val message: String = ""
+)
+
+/** 深境螺旋里的角色用 id/icon 字段。 */
+private fun parseAbyssAvatars(arr: org.json.JSONArray?): List<RecordAvatar> {
+    if (arr == null) return emptyList()
+    val list = ArrayList<RecordAvatar>(arr.length())
+    for (i in 0 until arr.length()) {
+        val a = arr.optJSONObject(i) ?: continue
+        list.add(
+            RecordAvatar(
+                id = a.optInt("id", 0),
+                icon = a.optString("icon", ""),
+                level = a.optInt("level", 0),
+                rarity = a.optInt("rarity", 0)
+            )
+        )
+    }
+    return list
+}
+
+/** 剧诗里的角色用 avatar_id/image 字段。 */
+private fun parseTheaterAvatars(arr: org.json.JSONArray?): List<RecordAvatar> {
+    if (arr == null) return emptyList()
+    val list = ArrayList<RecordAvatar>(arr.length())
+    for (i in 0 until arr.length()) {
+        val a = arr.optJSONObject(i) ?: continue
+        val id = a.optInt("avatar_id", 0)
+        if (id <= 0) continue
+        list.add(
+            RecordAvatar(
+                id = id,
+                icon = a.optString("image", ""),
+                level = a.optInt("level", 0),
+                rarity = a.optInt("rarity", 0)
+            )
+        )
+    }
+    return list
+}
+
+fun parseSpiralAbyss(raw: String): SpiralAbyss {
+    return try {
+        val obj = JSONObject(raw)
+        val retcode = obj.optInt("retcode", -1)
+        val message = obj.optString("message", "")
+        if (retcode != 0) {
+            return SpiralAbyss(0, "", 0, 0, false, emptyList(), "retcode=$retcode $message".trim())
+        }
+        val d = obj.optJSONObject("data") ?: return SpiralAbyss(0, "", 0, 0, false, emptyList(), "无数据")
+        val floors = ArrayList<AbyssFloor>()
+        d.optJSONArray("floors")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val f = arr.optJSONObject(i) ?: continue
+                val levels = ArrayList<AbyssLevel>()
+                f.optJSONArray("levels")?.let { levelArr ->
+                    for (j in 0 until levelArr.length()) {
+                        val l = levelArr.optJSONObject(j) ?: continue
+                        val battles = ArrayList<AbyssBattle>()
+                        l.optJSONArray("battles")?.let { battleArr ->
+                            for (k in 0 until battleArr.length()) {
+                                val b = battleArr.optJSONObject(k) ?: continue
+                                battles.add(
+                                    AbyssBattle(
+                                        index = b.optInt("index", 0),
+                                        avatars = parseAbyssAvatars(b.optJSONArray("avatars"))
+                                    )
+                                )
+                            }
+                        }
+                        levels.add(
+                            AbyssLevel(
+                                index = l.optInt("index", 0),
+                                star = l.optInt("star", 0),
+                                maxStar = l.optInt("max_star", 0),
+                                battles = battles
+                            )
+                        )
+                    }
+                }
+                floors.add(
+                    AbyssFloor(
+                        index = f.optInt("index", 0),
+                        star = f.optInt("star", 0),
+                        maxStar = f.optInt("max_star", 0),
+                        levels = levels
+                    )
+                )
+            }
+        }
+        SpiralAbyss(
+            totalStar = d.optInt("total_star", 0),
+            maxFloor = d.optString("max_floor", ""),
+            totalBattleTimes = d.optInt("total_battle_times", 0),
+            totalWinTimes = d.optInt("total_win_times", 0),
+            isUnlock = d.optBoolean("is_unlock", false),
+            floors = floors
+        )
+    } catch (e: Exception) {
+        SpiralAbyss(0, "", 0, 0, false, emptyList(), "解析失败")
+    }
+}
+
+fun parseRoleCombat(raw: String): RoleCombat {
+    return try {
+        val obj = JSONObject(raw)
+        val retcode = obj.optInt("retcode", -1)
+        val message = obj.optString("message", "")
+        if (retcode != 0) {
+            return RoleCombat(false, 0, 0, 0, 0, emptyList(), "retcode=$retcode $message".trim())
+        }
+        val data = obj.optJSONObject("data") ?: return RoleCombat(false, 0, 0, 0, 0, emptyList(), "无数据")
+        val detail = data.optJSONObject("detail")
+        val stat = detail?.optJSONObject("stat")
+        val avatars = LinkedHashMap<Int, RecordAvatar>()
+        detail?.optJSONArray("rounds_data")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val round = arr.optJSONObject(i) ?: continue
+                parseTheaterAvatars(round.optJSONArray("avatars")).forEach { avatars[it.id] = it }
+            }
+        }
+        parseTheaterAvatars(detail?.optJSONArray("backup_avatars")).forEach { avatars[it.id] = it }
+        RoleCombat(
+            hasData = data.optBoolean("has_data", false),
+            difficultyId = stat?.optInt("difficulty_id", 0) ?: 0,
+            maxRoundId = stat?.optInt("max_round_id", 0) ?: 0,
+            medalNum = stat?.optInt("medal_num", 0) ?: 0,
+            coinNum = stat?.optInt("coin_num", 0) ?: 0,
+            avatars = avatars.values.toList()
+        )
+    } catch (e: Exception) {
+        RoleCombat(false, 0, 0, 0, 0, emptyList(), "解析失败")
+    }
+}

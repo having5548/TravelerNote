@@ -93,6 +93,10 @@ class MainActivity : AppCompatActivity() {
                     showCharactersPage()
                     true
                 }
+                R.id.tab_tools -> {
+                    showToolsPage()
+                    true
+                }
                 R.id.tab_settings -> {
                     startActivity(Intent(this, SettingsActivity::class.java))
                     binding.bottomNav.post { binding.bottomNav.selectedItemId = R.id.tab_home }
@@ -139,14 +143,25 @@ class MainActivity : AppCompatActivity() {
     private fun showHomePage() {
         binding.recycler.visibility = View.VISIBLE
         binding.charactersScroll.visibility = View.GONE
+        binding.toolsScroll.visibility = View.GONE
         binding.toolbar.title = getString(R.string.app_name)
     }
 
     private fun showCharactersPage() {
         binding.recycler.visibility = View.GONE
         binding.charactersScroll.visibility = View.VISIBLE
+        binding.toolsScroll.visibility = View.GONE
         binding.toolbar.title = getString(R.string.tab_characters)
         loadCharacters()
+    }
+
+    /** 旅行工具页：原生原神战绩 + 米游社官方网页入口。 */
+    private fun showToolsPage() {
+        binding.recycler.visibility = View.GONE
+        binding.charactersScroll.visibility = View.GONE
+        binding.toolsScroll.visibility = View.VISIBLE
+        binding.toolbar.title = getString(R.string.tab_tools)
+        ToolsPage(this, binding, store).show()
     }
 
     // ---------------- 首页：自动签到 ----------------

@@ -129,6 +129,21 @@ class CookieStore(context: Context) {
         return parts.joinToString(";")
     }
 
+    /**
+     * 战绩接口用 Cookie：对齐 Snap.Hutao 的 CookieType.Cookie（cookie_token 体系 + ltoken 体系）。
+     */
+    fun recordCookieStr(): String {
+        val parts = mutableListOf<String>()
+        fun add(key: String, value: String?) {
+            if (!value.isNullOrBlank()) parts.add("$key=$value")
+        }
+        add("account_id", accountId())
+        add("cookie_token", cookieToken())
+        add("ltuid", ltuid())
+        add("ltoken", ltoken())
+        return parts.joinToString(";")
+    }
+
     fun ltoken(): String? = pick("ltoken", "ltoken_v2")
     fun ltuid(): String? = pick("ltuid", "ltuid_v2")
     fun cookieToken(): String? = get("cookie_token")

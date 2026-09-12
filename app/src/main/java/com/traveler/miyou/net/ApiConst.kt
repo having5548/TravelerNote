@@ -58,6 +58,10 @@ object ApiConst {
     val CREATE_VERIFICATION_URL: String get() = "$BBS_API/misc/api/createVerification?is_high=true"
     val VERIFY_VERIFICATION_URL: String get() = "$BBS_API/misc/api/verifyVerification"
 
+    // 战绩类端点（api-takumi-record）：query 需按字母序拼接后再做 DS 签名
+    val SPIRAL_ABYSS_URL: String get() = "$TAKUMI_RECORD_API/game_record/app/genshin/api/spiralAbyss"
+    val ROLE_COMBAT_URL: String get() = "$TAKUMI_RECORD_API/game_record/app/genshin/api/role_combat"
+
     // 请求头模板
     const val UA_MOBILE = "okhttp/4.9.3"
     val UA_WEB: String get() =

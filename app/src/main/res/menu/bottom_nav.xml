@@ -9,6 +9,10 @@
         android:icon="@drawable/ic_characters"
         android:title="@string/tab_characters" />
     <item
+        android:id="@+id/tab_tools"
+        android:icon="@drawable/ic_tools"
+        android:title="@string/tab_tools" />
+    <item
         android:id="@+id/tab_settings"
         android:icon="@drawable/ic_settings"
         android:title="@string/settings" />

@@ -341,6 +341,44 @@ object MiyouApi {
         return parseLelaerCharacters(resp.body)
     }
 
+    // ---------- 战绩（api-takumi-record）：签名方式对齐 Snap.Hutao ----------
+
+    /**
+     * 战绩类请求头。与 Snap.Hutao 的 GameRecordClient 一致：
+     * DS 用 X4 盐的 Gen2，且参与签名的 query 要按 & 拆开后字母序重新拼接。
+     */
+    private fun recordHeaders(cookie: String, deviceId: String, deviceFp: String, query: String): MutableMap<String, String> {
+        val sortedQuery = query.split('&').sorted().joinToString("&")
+        val headers = baseHeaders(deviceId, "5", ApiConst.RECORD_VERSION, ApiConst.UA_DESKTOP)
+        headers["DS"] = DS.gen2(ApiConst.X4_SALT, "", sortedQuery)
+        headers["Referer"] = "${ApiConst.WEBSTATIC}/app/community-game-records/index.html"
+        headers["x-rpc-device_fp"] = deviceFp
+        headers["x-rpc-tool_verison"] = "v5.0.1-ys"
+        headers["Cookie"] = cookie
+        return headers
+    }
+
+    /** 深境螺旋战绩。scheduleType：1 = 本期，2 = 上期。 */
+    fun fetchSpiralAbyss(
+        cookie: String,
+        deviceId: String,
+        deviceFp: String,
+        uid: String,
+        region: String,
+        scheduleType: Int = 1
+    ): SpiralAbyss {
+        val query = "role_id=$uid&schedule_type=$scheduleType&server=$region"
+        val resp = Http.get("${ApiConst.SPIRAL_ABYSS_URL}?$query", recordHeaders(cookie, deviceId, deviceFp, query))
+        return parseSpiralAbyss(resp.body)
+    }
+
+    /** 幻想真境剧诗战绩。 */
+    fun fetchRoleCombat(cookie: String, deviceId: String, deviceFp: String, uid: String, region: String): RoleCombat {
+        val query = "active=1&need_detail=true&role_id=$uid&server=$region"
+        val resp = Http.get("${ApiConst.ROLE_COMBAT_URL}?$query", recordHeaders(cookie, deviceId, deviceFp, query))
+        return parseRoleCombat(resp.body)
+    }
+
     // ---------- 原神游戏每日签到（luna，发游戏内邮件奖励） ----------
 
     private fun lunaHeaders(cookie: String, deviceId: String): MutableMap<String, String> {
