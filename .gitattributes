@@ -1,0 +1,12 @@
+# 统一换行符，避免 Windows 的 core.autocrlf 把 gradlew 变成 CRLF
+# （CRLF 的 shell 脚本在 Linux/macOS/Git Bash 下会报 bad interpreter）
+* text=auto eol=lf
+*.bat text eol=crlf
+gradlew text eol=lf
+
+# 二进制文件不做换行转换
+*.jar binary
+*.png binary
+*.apk binary
+*.keystore binary
+*.jks binary

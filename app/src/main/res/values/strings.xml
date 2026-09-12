@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">旅行者便签</string>
+    <string name="subtitle">原神实时便签</string>
+    <string name="sign_title">今日签到</string>
+    <string name="sign_waiting">正在签到…</string>
+    <string name="sign_success">签到成功</string>
+    <string name="sign_already">今日已签到</string>
+    <string name="sign_failed">签到失败</string>
+    <string name="sign_captcha">签到需要人机验证</string>
+    <string name="note_section">实时便签</string>
+    <string name="refresh">刷新</string>
+    <string name="logout">退出登录</string>
+
+    <string name="settings">设置</string>
+    <string name="login_qr">扫码登录</string>
+    <string name="login_phone">手机号登录</string>
+    <string name="login_manual">手动粘贴 Cookie</string>
+    <string name="login_manual_hint">粘贴完整的 Cookie 字符串</string>
+    <string name="confirm">确定</string>
+    <string name="cancel">取消</string>
+    <string name="close">关闭</string>
+    <string name="loading">加载中…</string>
+
+    <string name="qr_waiting">正在生成二维码…</string>
+    <string name="qr_scan_hint">请使用米游社 App 扫码确认登录</string>
+    <string name="qr_scanned">已扫码，请在手机上确认</string>
+    <string name="qr_confirmed">已确认，正在获取凭证…</string>
+    <string name="qr_expired">二维码已过期，正在刷新…</string>
+
+    <string name="phone_hint">手机号</string>
+    <string name="sms_code_hint">短信验证码</string>
+    <string name="send_code">发送验证码</string>
+    <string name="login">登录</string>
+    <string name="phone_invalid">请输入正确的手机号</string>
+    <string name="send_code_sent">验证码已发送</string>
+    <string name="send_code_failed">发送验证码失败</string>
+    <string name="login_failed">登录失败</string>
+
+    <string name="captcha_title">安全验证</string>
+    <string name="captcha_required">需要完成安全验证后继续</string>
+    <string name="captcha_cancelled">已取消安全验证</string>
+
+    <string name="seamless_captcha">无感验证</string>
+    <string name="seamless_captcha_desc">开启后遇到人机验证时自动调用打码接口识别（默认关闭，仅支持 https 接口）</string>
+    <string name="captcha_api_hint">打码接口地址（https）</string>
+    <string name="captcha_userkey_hint">打码平台 userkey</string>
+    <string name="captcha_api_https_required">打码接口必须使用 https:// 地址</string>
+    <string name="captcha_api_required">开启无感验证需填写打码接口地址</string>
+    <string name="captcha_userkey_required">开启无感验证需填写 userkey</string>
+
+    <string name="settings_theme">主题颜色</string>
+    <string name="settings_background">软件背景</string>
+    <string name="background_none">无（默认纯色）</string>
+    <string name="background_random">每日随机图片</string>
+    <string name="background_launcher">米游社官方启动器背景</string>
+    <string name="background_bing">必应每日一图</string>
+    <string name="char_source_lelaer">提瓦特小助手</string>
+    <string name="char_source_enka">Enka</string>
+    <string name="tab_home">首页</string>
+    <string name="tab_characters">我的角色</string>
+    <string name="characters_title">展示角色</string>
+    <string name="characters_lv">等级</string>
+    <string name="characters_open_enka">在 Enka 查看详情</string>
+    <string name="characters_loading">正在获取角色…</string>
+    <string name="characters_empty">暂无展示角色</string>
+    <string name="characters_fail">获取失败，请检查网络后重试</string>
+    <string name="characters_need_login">请先登录并绑定原神账号</string>
+    <string name="settings_verify">验证</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_github">GitHub</string>
+    <string name="github_handle">having5548</string>
+    <string name="settings_version">版本</string>
+    <string name="version_name">1.1.1</string>
+    <string name="disclaimer_title">免责声明</string>
+    <string name="agree">同意并继续</string>
+    <string name="disagree">不同意并退出</string>
+    <string name="disclaimer">免责声明\n\n本应用仅供个人学习与技术交流使用，不得用于任何商业用途或大规模自动化操作。自动签到可能违反米哈游相关服务条款，可能导致账号被限制或封禁，请自行评估风险并自行承担一切后果。应用不会收集、上传或存储你的账号密码；登录凭证仅保存在本机应用私有目录中。使用本应用即表示你已知晓并同意上述内容。</string>
+
+    <string name="resin">原粹树脂</string>
+    <string name="resin_full">已回满</string>
+    <string name="resin_full_at">回满于</string>
+    <string name="resin_fail">树脂数据获取失败</string>
+    <string name="daily_task">每日委托</string>
+    <string name="expedition">探索派遣</string>
+    <string name="home_coin">洞天宝钱</string>
+    <string name="transformer">参量质变仪</string>
+    <string name="weekly_boss">周本减半</string>
+    <string name="expedition_done">已完成</string>
+    <string name="transformer_not_obtained">未获得</string>
+    <string name="transformer_ready">可使用</string>
+    <string name="no_note_data">暂无便签数据</string>
+    <string name="network_error">网络异常，请稍后重试</string>
+    <string name="not_logged_in">尚未登录</string>
+
+    <string name="calendar_title">旅行日历</string>
+    <string name="calendar_caption">按本月签到次数依次领取，格子里的图标就是当天奖励</string>
+    <string name="calendar_day_label">第 %1$d 天</string>
+    <string name="calendar_empty">暂未获取到本月签到奖励</string>
+    <string name="calendar_empty_reason">暂未获取到本月签到奖励（%1$s）</string>
+    <string name="calendar_summary_unsigned">本月已签 %1$d 天 · 今日可领 %2$s ×%3$d</string>
+    <string name="calendar_summary_signed">本月已签 %1$d 天 · 今日已领 %2$s ×%3$d</string>
+
+    <string name="community_sign">社区签到</string>
+    <string name="community_sign_doing">正在社区签到…</string>
+    <string name="community_sign_done">社区签到：今日已完成</string>
+    <string name="community_sign_todo">社区签到：今日未完成</string>
+    <string name="community_sign_unknown">社区签到：状态未知</string>
+    <string name="community_sign_success">社区签到成功</string>
+    <string name="community_sign_already">社区今日已签到</string>
+    <string name="community_sign_failed">社区签到失败</string>
+    <string name="community_sign_hint">游戏签到是自动的；社区（论坛）签到需要手动点上面的按钮</string>
+</resources>

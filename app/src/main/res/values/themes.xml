@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TravelerNote" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorSecondary">@color/accent_blue</item>
+        <item name="colorSecondaryVariant">@color/primary_dark</item>
+        <item name="colorOnSecondary">@color/on_primary</item>
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <style name="ThemeOverlay.TravelerNote.Blue" parent="">
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorPrimaryVariant">@color/accent_blue</item>
+        <item name="colorSecondary">@color/accent_blue</item>
+        <item name="colorSecondaryVariant">@color/accent_blue</item>
+    </style>
+
+    <style name="ThemeOverlay.TravelerNote.Teal" parent="">
+        <item name="colorPrimary">@color/accent_teal</item>
+        <item name="colorPrimaryVariant">@color/accent_teal</item>
+        <item name="colorSecondary">@color/accent_teal</item>
+        <item name="colorSecondaryVariant">@color/accent_teal</item>
+    </style>
+
+    <style name="ThemeOverlay.TravelerNote.Purple" parent="">
+        <item name="colorPrimary">@color/accent_purple</item>
+        <item name="colorPrimaryVariant">@color/accent_purple</item>
+        <item name="colorSecondary">@color/accent_purple</item>
+        <item name="colorSecondaryVariant">@color/accent_purple</item>
+    </style>
+
+    <style name="ThemeOverlay.TravelerNote.Rose" parent="">
+        <item name="colorPrimary">@color/accent_rose</item>
+        <item name="colorPrimaryVariant">@color/accent_rose</item>
+        <item name="colorSecondary">@color/accent_rose</item>
+        <item name="colorSecondaryVariant">@color/accent_rose</item>
+    </style>
+
+    <style name="ThemeOverlay.TravelerNote.Orange" parent="">
+        <item name="colorPrimary">@color/accent_orange</item>
+        <item name="colorPrimaryVariant">@color/accent_orange</item>
+        <item name="colorSecondary">@color/accent_orange</item>
+        <item name="colorSecondaryVariant">@color/accent_orange</item>
+    </style>
+
+    <style name="ThemeOverlay.TravelerNote.Green" parent="">
+        <item name="colorPrimary">@color/accent_green</item>
+        <item name="colorPrimaryVariant">@color/accent_green</item>
+        <item name="colorSecondary">@color/accent_green</item>
+        <item name="colorSecondaryVariant">@color/accent_green</item>
+    </style>
+</resources>
