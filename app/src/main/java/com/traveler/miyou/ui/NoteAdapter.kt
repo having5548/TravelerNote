@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 having5548
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.traveler.miyou.ui
 
 import android.content.Context
