@@ -74,6 +74,37 @@ object ApiConst {
     val CARD_VERIFY_VERIFICATION_URL: String get() =
         "$TAKUMI_RECORD_API/game_record/app/card/wapi/verifyVerification"
 
+    /** 活动日历（含 UP 池）：POST role_id/server，body 参与签名。 */
+    val ACT_CALENDAR_URL: String get() = "$TAKUMI_RECORD_API/game_record/app/genshin/api/act_calendar"
+
+    /** 游戏公告：与米哈游启动器同源，无需登录、无需 DS。 */
+    val ANN_API: String = d("aHR0cHM6Ly9oazRlLWFubi1hcGkubWlob3lvLmNvbQ==")
+
+    fun annListUrl(region: String): String =
+        "$ANN_API/common/hk4e_cn/announcement/api/getAnnList?" + annQuery(region)
+
+    fun annContentUrl(region: String): String =
+        "$ANN_API/common/hk4e_cn/announcement/api/getAnnContent?" + annQuery(region)
+
+    private fun annQuery(region: String): String =
+        "game=hk4e&game_biz=hk4e_cn&lang=zh-cn&bundle_id=hk4e_cn&platform=pc" +
+            "&region=$region&level=55&uid=100000000"
+
+    // 米游社官方 B 站账号动态（公开接口，无需登录）
+    val BILI_API: String = d("aHR0cHM6Ly9hcGkuYmlsaWJpbGkuY29t")
+    val BILI_VC_API: String = d("aHR0cHM6Ly9hcGkudmMuYmlsaWJpbGkuY29t")
+    val BILI_T: String = d("aHR0cHM6Ly90LmJpbGliaWxpLmNvbQ==")
+    val BILI_WWW: String = d("aHR0cHM6Ly93d3cuYmlsaWJpbGkuY29t")
+    val BILI_SPACE: String = d("aHR0cHM6Ly9zcGFjZS5iaWxpYmlsaS5jb20=")
+
+    /** 原神官方 B 站账号 UID。 */
+    const val BILI_GENSHIN_UID = "401742377"
+
+    /** B 站客户端接口（appkey + appsecret 签名，无需登录）：官方投稿与专栏。 */
+    val BILI_APP_API: String = d("aHR0cHM6Ly9hcHAuYmlsaWJpbGkuY29t")
+    val BILI_APP_KEY: String = d("MWQ4YjZlN2Q0NTIzMzQzNg==")
+    val BILI_APP_SECRET: String = d("NTYwYzUyY2NkMjg4ZmVkMDQ1ODU5ZWQxOGJmZmQ5NzM=")
+
     /** 设备指纹注册（公开数据接口，无需登录）。 */
     const val DEVICE_FP_URL = "https://public-data-api.mihoyo.com/device-fp/api/getFp"
 

@@ -23,7 +23,7 @@ object ImageLoader {
         }
     }
 
-    fun load(context: Context, url: String, view: ImageView) {
+    fun load(context: Context, url: String, view: ImageView, referer: String? = null) {
         val key = url.hashCode().toString()
         memCache.get(key)?.let {
             view.setImageBitmap(it)
@@ -48,6 +48,7 @@ object ImageLoader {
                     conn.connectTimeout = 10_000
                     conn.readTimeout = 12_000
                     conn.setRequestProperty("User-Agent", ApiConst.UA_DESKTOP)
+                    if (!referer.isNullOrBlank()) conn.setRequestProperty("Referer", referer)
                     val code = conn.responseCode
                     if (code in 300..399) {
                         val loc = conn.getHeaderField("Location") ?: return@Thread

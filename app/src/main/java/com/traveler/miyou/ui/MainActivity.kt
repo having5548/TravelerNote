@@ -18,6 +18,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.traveler.miyou.R
 import com.traveler.miyou.databinding.ActivityMainBinding
 import com.traveler.miyou.databinding.ItemCharacterBinding
+import com.traveler.miyou.net.ApiConst
 import com.traveler.miyou.net.BackgroundEngine
 import com.traveler.miyou.net.CaptchaSolver
 import com.traveler.miyou.net.ImageLoader
@@ -33,6 +34,9 @@ import kotlin.coroutines.suspendCoroutine
 /** 前台恢复时自动签到的最小间隔，避免频繁切换前后台反复请求。 */
 private const val AUTO_REFRESH_INTERVAL_MS = 60_000L
 
+/** 「游戏资讯」自动刷新的节流间隔（手动点刷新不受限制）。 */
+private const val NEWS_INTERVAL_MS = 10 * 60_000L
+
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -40,10 +44,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settings: SettingsStore
     private lateinit var adapter: NoteAdapter
 
+    /** 抓官方 B 站动态用的隐藏 WebView（见 BiliDynamicWeb）。 */
+    private lateinit var biliWeb: BiliDynamicWeb
+
     private var captchaContinuation: kotlin.coroutines.Continuation<String?>? = null
 
     /** 上次刷新时间，用于前台恢复时的自动刷新节流。 */
     private var lastRefreshAt = 0L
+
+    /** 上次成功刷新「游戏资讯」的时间。 */
+    private var lastNewsAt = 0L
 
     private val captchaLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -80,6 +90,9 @@ class MainActivity : AppCompatActivity() {
 
         // 角色数据失败时（风控 / 人机验证）用户能手动再试一次
         binding.charRefresh.setOnClickListener { loadCharacters() }
+        // 游戏资讯手动刷新
+        binding.newsRefresh.setOnClickListener { loadNews(force = true) }
+        biliWeb = BiliDynamicWeb(this, binding.newsBiliContainer)
 
         // 多账号：到期就统一刷新一次所有账号的凭证，避免长期不用导致 cookie 失效
         com.traveler.miyou.store.AccountRefresher.refreshIfDue(this, lifecycleScope)
@@ -88,6 +101,10 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.tab_characters -> {
                     showCharactersPage()
+                    true
+                }
+                R.id.tab_news -> {
+                    showNewsPage()
                     true
                 }
                 R.id.tab_tools -> {
@@ -148,6 +165,7 @@ class MainActivity : AppCompatActivity() {
     private fun showHomePage() {
         binding.recycler.visibility = View.VISIBLE
         binding.charactersScroll.visibility = View.GONE
+        binding.newsScroll.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
         ThemeHelper.applyToolbarScrim(this)
@@ -158,12 +176,26 @@ class MainActivity : AppCompatActivity() {
     private fun showCharactersPage() {
         binding.recycler.visibility = View.GONE
         binding.charactersScroll.visibility = View.VISIBLE
+        binding.newsScroll.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
         ThemeHelper.applyToolbarScrim(this)
         binding.toolbar.title = getString(R.string.tab_characters)
         loadCharacters()
         applyRootTopInset(false)
+    }
+
+    /** 游戏资讯：活动日历 / UP 池 / 游戏公告 / 官方 B 站动态。 */
+    private fun showNewsPage() {
+        binding.recycler.visibility = View.GONE
+        binding.charactersScroll.visibility = View.GONE
+        binding.newsScroll.visibility = View.VISIBLE
+        binding.toolsWebContainer.visibility = View.GONE
+        binding.toolbar.visibility = View.VISIBLE
+        ThemeHelper.applyToolbarScrim(this)
+        binding.toolbar.title = getString(R.string.tab_news)
+        applyRootTopInset(false)
+        loadNews(force = false)
     }
 
     /**
@@ -174,6 +206,7 @@ class MainActivity : AppCompatActivity() {
     private fun showToolsPage() {
         binding.recycler.visibility = View.GONE
         binding.charactersScroll.visibility = View.GONE
+        binding.newsScroll.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.VISIBLE
         binding.toolbar.visibility = View.GONE
         applyRootTopInset(true)
@@ -184,6 +217,9 @@ class MainActivity : AppCompatActivity() {
         // 内嵌的 WebView 常驻在布局里，Activity 销毁时要主动释放
         if (::binding.isInitialized) {
             binding.toolsWeb.destroy()
+        }
+        if (::biliWeb.isInitialized) {
+            biliWeb.destroy()
         }
         super.onDestroy()
     }
@@ -799,6 +835,416 @@ class MainActivity : AppCompatActivity() {
             .setView(text)
             .setPositiveButton(R.string.close, null)
             .show()
+    }
+
+    // ---------------- 游戏资讯：活动 / UP 池 / 公告 / 官方 B 站动态 ----------------
+
+    private suspend fun loadActCalendarWithCaptcha(): com.traveler.miyou.net.ActCalendarResult? {
+        val uid = store.roleUid() ?: return null
+        val region = store.roleRegion() ?: return null
+        val cookie = store.recordCookieStr()
+        val deviceId = store.deviceId()
+        val deviceFp = withContext(Dispatchers.IO) {
+            com.traveler.miyou.net.DeviceFp.ensure(store)
+        }
+        var r = withContext(Dispatchers.IO) {
+            com.traveler.miyou.net.fetchActCalendar(cookie, deviceId, deviceFp, uid, region)
+        }
+        if (r.needVerification) {
+            val challenge = resolveRecordCaptcha(cookie, deviceId, deviceFp)
+            if (challenge != null) {
+                r = withContext(Dispatchers.IO) {
+                    com.traveler.miyou.net.fetchActCalendar(
+                        cookie, deviceId, deviceFp, uid, region, challenge
+                    )
+                }
+            }
+        }
+        return r
+    }
+
+    private fun loadNews(force: Boolean) {
+        if (!force && System.currentTimeMillis() - lastNewsAt < NEWS_INTERVAL_MS) return
+        binding.newsUpdated.text = getString(R.string.news_loading)
+        binding.newsActs.removeAllViews()
+        binding.newsActs.addView(statusView(getString(R.string.news_loading)))
+        binding.newsPools.removeAllViews()
+        binding.newsNotices.removeAllViews()
+        binding.newsDynamics.removeAllViews()
+        binding.newsDynamics.addView(statusView(getString(R.string.news_loading)))
+
+        lifecycleScope.launch {
+            // 1) 活动日历 + UP 池（需要登录态与角色 uid）
+            try {
+                val r = loadActCalendarWithCaptcha()
+                binding.newsActs.removeAllViews()
+                binding.newsPools.removeAllViews()
+                when {
+                    r == null -> {
+                        val text = getString(R.string.news_need_login)
+                        binding.newsActs.addView(statusView(text))
+                        binding.newsPools.addView(statusView(text))
+                    }
+                    !r.ok -> {
+                        val text = newsErrorText(r.retcode, r.message)
+                        binding.newsActs.addView(statusView(text))
+                        binding.newsPools.addView(statusView(text))
+                    }
+                    else -> {
+                        renderActs(r.acts)
+                        renderPools(r.pools)
+                    }
+                }
+            } catch (e: Exception) {
+                binding.newsActs.removeAllViews()
+                binding.newsActs.addView(statusView(getString(R.string.news_fail)))
+                binding.newsPools.removeAllViews()
+                binding.newsPools.addView(statusView(getString(R.string.news_fail)))
+            }
+
+            // 2) 游戏公告（与米哈游启动器同源，无需登录）
+            try {
+                val ann = withContext(Dispatchers.IO) {
+                    com.traveler.miyou.net.fetchAnnouncements(store.roleRegion() ?: "cn_gf01")
+                }
+                binding.newsNotices.removeAllViews()
+                renderNotices(ann)
+            } catch (e: Exception) {
+                binding.newsNotices.removeAllViews()
+                binding.newsNotices.addView(statusView(getString(R.string.news_fail)))
+            }
+
+            // 3) 原神官方 B 站内容：先用隐藏 WebView 抓真实动态（页面自己的请求带风控 cookie），
+            //    抓不到再退回官方投稿 + 专栏（客户端接口，无需登录）
+            binding.newsDynamics.removeAllViews()
+            binding.newsDynamics.addView(statusView(getString(R.string.news_loading)))
+            biliWeb.capture { raw ->
+                if (isFinishing || isDestroyed) return@capture
+                lifecycleScope.launch {
+                    val captured = if (raw != null) {
+                        withContext(Dispatchers.IO) {
+                            com.traveler.miyou.net.parseCapturedDynamics(raw)
+                        }
+                    } else {
+                        null
+                    }
+                    val dyn = if (captured != null && captured.ok && captured.items.isNotEmpty()) {
+                        captured
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            com.traveler.miyou.net.fetchOfficialBiliContent()
+                        }
+                    }
+                    if (isFinishing || isDestroyed) return@launch
+                    binding.newsDynamics.removeAllViews()
+                    renderDynamics(dyn)
+                }
+            }
+
+            lastNewsAt = System.currentTimeMillis()
+            binding.newsUpdated.text = getString(R.string.news_updated, fmtDateTime(lastNewsAt))
+        }
+    }
+
+    private fun newsErrorText(retcode: Int, message: String): String = when {
+        retcode == 5003 -> getString(R.string.characters_risk)
+        retcode == 1034 -> getString(R.string.characters_need_captcha)
+        retcode == -100 || retcode == 10001 -> getString(R.string.characters_need_login)
+        else -> buildString {
+            append(getString(R.string.news_fail))
+            append("（").append(retcode)
+            if (message.isNotBlank()) append(' ').append(message)
+            append('）')
+        }
+    }
+
+    /** 活动/卡池的三种状态：1 即将开始 / 2 进行中 / 0 已结束。 */
+    private fun phaseOf(startMs: Long, endMs: Long): Int {
+        val now = System.currentTimeMillis()
+        return when {
+            endMs in 1..now -> 0
+            startMs > now -> 1
+            else -> 2
+        }
+    }
+
+    private fun phaseText(phase: Int): String = when (phase) {
+        0 -> getString(R.string.news_status_finished)
+        1 -> getString(R.string.news_status_upcoming)
+        else -> getString(R.string.news_status_ongoing)
+    }
+
+    private fun fxCountdown(startMs: Long, endMs: Long): String {
+        val now = System.currentTimeMillis()
+        if (endMs in 1..now) return getString(R.string.news_status_finished)
+        val target = if (startMs > now) startMs else endMs
+        val prefix = startMs > now
+        val diff = target - now
+        val days = (diff / 86_400_000L).toInt()
+        val hours = (diff / 3_600_000L).toInt()
+        return when {
+            days >= 1 -> getString(
+                if (prefix) R.string.news_start_in_days else R.string.news_left_days, days
+            )
+            else -> getString(
+                if (prefix) R.string.news_start_in_hours else R.string.news_left_hours,
+                hours.coerceAtLeast(1)
+            )
+        }
+    }
+
+    private val newsDateFormat = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
+    private val newsDateFullFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
+
+    private fun fmtDateTime(ms: Long): String = if (ms <= 0L) "" else newsDateFullFormat.format(java.util.Date(ms))
+
+    /** 同年只显示 月-日 时:分，跨年带上年份。 */
+    private fun fmtShortTime(ms: Long): String {
+        if (ms <= 0L) return "-"
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = ms }
+        return if (cal.get(java.util.Calendar.YEAR) == year) {
+            newsDateFormat.format(java.util.Date(ms))
+        } else {
+            newsDateFullFormat.format(java.util.Date(ms))
+        }
+    }
+
+    private fun renderActs(acts: List<com.traveler.miyou.net.NewsAct>) {
+        val now = System.currentTimeMillis()
+        val list = acts
+            .filter { it.endMs == 0L || it.endMs > now }
+            .sortedWith(compareBy({ if (phaseOf(it.startMs, it.endMs) == 2) 0 else 1 }, { it.endMs }))
+        if (list.isEmpty()) {
+            binding.newsActs.addView(statusView(getString(R.string.news_empty)))
+            return
+        }
+        list.forEach { a ->
+            val item = com.traveler.miyou.databinding.ItemNewsActBinding
+                .inflate(layoutInflater, binding.newsActs, false)
+            item.name.text = a.name
+            item.status.text = phaseText(phaseOf(a.startMs, a.endMs))
+            item.time.text = getString(
+                R.string.news_time_range, fmtShortTime(a.startMs), fmtShortTime(a.endMs)
+            )
+            item.countdown.text = fxCountdown(a.startMs, a.endMs)
+            if (a.rewards.isEmpty()) {
+                item.rewards.visibility = View.GONE
+            } else {
+                item.rewards.text = a.rewards.joinToString("、")
+            }
+            binding.newsActs.addView(item.root)
+        }
+    }
+
+    private fun renderPools(pools: List<com.traveler.miyou.net.NewsCardPool>) {
+        val now = System.currentTimeMillis()
+        val list = pools
+            .filter { it.endMs == 0L || it.endMs > now }
+            .sortedWith(compareBy({ if (phaseOf(it.startMs, it.endMs) == 2) 0 else 1 }, { it.endMs }))
+        if (list.isEmpty()) {
+            binding.newsPools.addView(statusView(getString(R.string.news_empty)))
+            return
+        }
+        list.forEach { p ->
+            val item = com.traveler.miyou.databinding.ItemNewsPoolBinding
+                .inflate(layoutInflater, binding.newsPools, false)
+            item.type.text = com.traveler.miyou.net.cardPoolTypeName(p.poolType)
+            item.name.text = p.poolName
+            item.status.text = phaseText(phaseOf(p.startMs, p.endMs))
+            item.time.text = getString(
+                R.string.news_time_range, fmtShortTime(p.startMs), fmtShortTime(p.endMs)
+            )
+            item.countdown.text = fxCountdown(p.startMs, p.endMs)
+            // 五星角色 / 武器头像 + 名字
+            p.items.take(6).forEach { it ->
+                val box = android.widget.LinearLayout(this).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                }
+                val iv = android.widget.ImageView(this).apply {
+                    layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48))
+                    scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                    contentDescription = null
+                }
+                val tv = TextView(this).apply {
+                    text = it.name
+                    textSize = 10f
+                    gravity = android.view.Gravity.CENTER
+                    maxLines = 2
+                    setTextColor(getColor(R.color.text_secondary))
+                }
+                box.addView(iv)
+                box.addView(tv)
+                if (it.icon.isNotBlank()) ImageLoader.load(this, it.icon, iv)
+                item.icons.addView(box)
+            }
+            binding.newsPools.addView(item.root)
+        }
+    }
+
+    private fun renderNotices(ann: com.traveler.miyou.net.AnnouncementResult) {
+        if (!ann.ok || ann.total == 0) {
+            binding.newsNotices.addView(
+                statusView(
+                    if (ann.ok) getString(R.string.news_empty)
+                    else newsErrorText(ann.retcode, ann.message)
+                )
+            )
+            return
+        }
+        // 只展示前 12 条，避免首页太长；点开就是启动器同款公告正文
+        var shown = 0
+        for (g in ann.groups) {
+            if (shown >= 12) break
+            if (g.typeLabel.isNotBlank()) {
+                binding.newsNotices.addView(sectionLabel(g.typeLabel))
+            }
+            for (n in g.notices) {
+                if (shown >= 12) break
+                val item = com.traveler.miyou.databinding.ItemNewsNoticeBinding
+                    .inflate(layoutInflater, binding.newsNotices, false)
+                item.title.text = n.title
+                val hasTime = n.type == 1 && n.startMs > 0 && n.endMs > 0
+                item.tag.text = when {
+                    n.tagLabel.isNotBlank() -> n.tagLabel
+                    hasTime -> phaseText(phaseOf(n.startMs, n.endMs))
+                    n.typeLabel.isNotBlank() -> n.typeLabel
+                    else -> "公告"
+                }
+                if (item.tag.text.isNullOrBlank()) item.tag.visibility = View.GONE
+                item.meta.text = if (hasTime) {
+                    getString(R.string.news_time_range, fmtShortTime(n.startMs), fmtShortTime(n.endMs))
+                } else {
+                    n.subtitle
+                }
+                item.card.setOnClickListener { openNotice(n) }
+                binding.newsNotices.addView(item.root)
+                shown++
+            }
+        }
+    }
+
+    private fun renderDynamics(dyn: com.traveler.miyou.net.BiliDynamicResult) {
+        if (!dyn.ok || dyn.items.isEmpty()) {
+            binding.newsDynamics.addView(
+                statusView(
+                    if (dyn.ok) getString(R.string.news_empty)
+                    else newsErrorText(dyn.retcode, dyn.message)
+                )
+            )
+            return
+        }
+        dyn.items.take(12).forEach { d ->
+            val item = com.traveler.miyou.databinding.ItemNewsDynamicBinding
+                .inflate(layoutInflater, binding.newsDynamics, false)
+            item.kind.text = d.kind
+            item.time.text = buildString {
+                append(fmtShortTime(d.pubMs))
+                if (d.meta.isNotBlank()) append("  ·  ").append(d.meta)
+            }
+            item.text.text = d.text
+            if (d.text.isBlank()) item.text.visibility = View.GONE
+
+            // 最多 3 张图，点击用哔哩哔哩打开原内容
+            d.images.take(3).forEach { url ->
+                val iv = android.widget.ImageView(this).apply {
+                    layoutParams = android.widget.LinearLayout.LayoutParams(dp(96), dp(96)).apply {
+                        rightMargin = dp(6)
+                    }
+                    scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                    contentDescription = null
+                }
+                ImageLoader.load(this, url, iv, referer = ApiConst.BILI_WWW)
+                iv.setOnClickListener { openBili(d) }
+                item.images.addView(iv)
+            }
+
+            if (d.isVideo) {
+                item.videoRow.visibility = View.VISIBLE
+                item.videoTitle.text = buildString {
+                    append(getString(R.string.news_video_prefix))
+                    if (d.meta.isNotBlank()) append("  ·  ").append(d.meta)
+                    append("  ·  ").append(getString(R.string.news_bili_open))
+                }
+            }
+
+            item.card.setOnClickListener { openBili(d) }
+            binding.newsDynamics.addView(item.root)
+        }
+    }
+
+    /**
+     * 打开一条 B 站内容：优先用官方深链（投稿接口本身就返回
+     * `bilibili://video/<aid>` / `bilibili://article/<id>`），没装客户端再回落到网页版。
+     */
+    private fun openBili(d: com.traveler.miyou.net.BiliDynamicItem) {
+        val schemes = ArrayList<String>()
+        if (d.deepLink.isNotBlank()) schemes.add(d.deepLink)
+        if (d.isVideo && d.aid > 0) schemes.add("bilibili://video/${d.aid}")
+        if (d.isVideo && d.bvid.isNotBlank()) schemes.add("bilibili://video/${d.bvid}")
+        for (s in schemes) {
+            if (tryOpenScheme(s)) return
+        }
+        if (d.webUrl.isNotBlank()) {
+            android.widget.Toast
+                .makeText(this, getString(R.string.news_bili_missing), android.widget.Toast.LENGTH_SHORT)
+                .show()
+            openExternal(d.webUrl)
+        }
+    }
+
+    private fun tryOpenScheme(url: String): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun openExternal(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        } catch (e: Exception) {
+            // 没有浏览器就静默失败
+        }
+    }
+
+    private fun sectionLabel(text: String): TextView = TextView(this).apply {
+        this.text = text
+        textSize = 12f
+        setTextColor(getColor(R.color.text_secondary))
+        setPadding(0, dp(2), 0, dp(6))
+    }
+
+    /** 公告详情：**立刻**在应用内打开，正文交给详情页自己拉（避免点一下半天没反应）。 */
+    private fun openNotice(n: com.traveler.miyou.net.NewsNotice) {
+        try {
+            startActivity(
+                AnnouncementActivity.intent(
+                    this,
+                    n.annId,
+                    n.title,
+                    n.subtitle,
+                    n.banner,
+                    store.roleRegion() ?: "cn_gf01",
+                    n.content
+                )
+            )
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(
+                this, getString(R.string.news_notice_open_failed), android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     private fun statusView(text: String): TextView {

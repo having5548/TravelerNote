@@ -105,7 +105,7 @@
     <string name="settings_github">GitHub</string>
     <string name="github_handle">having5548</string>
     <string name="settings_version">版本</string>
-    <string name="version_name">1.1.4</string>
+    <string name="version_name">1.1.5</string>
     <string name="disclaimer_title">免责声明</string>
 
     <string name="onboarding_title">使用前请仔细阅读</string>
@@ -160,6 +160,34 @@
 
     <string name="tab_tools">旅行工具</string>
     <string name="tools_hint">米游社官方网页工具入口，点击用浏览器打开。战绩、祈愿、通行证等页面需要先在浏览器里登录米游社账号。</string>
+
+    <!-- 游戏资讯 -->
+    <string name="tab_news">游戏资讯</string>
+    <string name="news_title">游戏资讯</string>
+    <string name="news_refresh">刷新</string>
+    <string name="news_updated">更新于 %1$s</string>
+    <string name="news_loading">正在获取…</string>
+    <string name="news_acts">进行中的活动</string>
+    <string name="news_pools">UP 池</string>
+    <string name="news_notices">游戏公告</string>
+    <string name="news_dynamics">原神官方动态（B站）</string>
+    <string name="news_dynamics_hint">内容抓取自官方 B 站账号；视频用哔哩哔哩客户端打开，未安装时回落到网页</string>
+    <string name="news_empty">暂无数据</string>
+    <string name="news_fail">获取失败</string>
+    <string name="news_need_login">登录并绑定角色后可查看活动与 UP 池</string>
+    <string name="news_status_ongoing">进行中</string>
+    <string name="news_status_upcoming">即将开始</string>
+    <string name="news_status_finished">已结束</string>
+    <string name="news_time_range">%1$s ~ %2$s</string>
+    <string name="news_left_days">剩余 %1$d 天</string>
+    <string name="news_left_hours">剩余 %1$d 小时</string>
+    <string name="news_start_in_days">%1$d 天后开始</string>
+    <string name="news_start_in_hours">%1$d 小时后开始</string>
+    <string name="news_end_time">截止 %1$s（剩余 %2$d 天）</string>
+    <string name="news_video_prefix">视频</string>
+    <string name="news_bili_open">点击用哔哩哔哩打开</string>
+    <string name="news_bili_missing">未安装哔哩哔哩客户端，已用网页打开</string>
+    <string name="news_notice_open_failed">公告打开失败，请重试</string>
 
     <string name="tools_group_community">社区与签到</string>
     <string name="tool_miyoushe_ys">米游社 · 原神社区</string>
