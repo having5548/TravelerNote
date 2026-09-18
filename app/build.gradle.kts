@@ -23,8 +23,8 @@ android {
         applicationId = "com.traveler.miyou"
         minSdk = 30
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.1.5"
+        versionCode = 9
+        versionName = "1.1.7"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -90,18 +90,41 @@ dependencies {
 }
 
 /**
- * 打包后把**已签名**的 APK 复制到仓库根目录的 apk/：
+ * 打包后把**已签名**的 APK 复制到仓库根目录的 apk/，并再**复制一份重命名**成带版本号的发布包：
  *   app/build/outputs/apk/release/app-release.apk → apk/app-release.apk
+ *                                                → apk/TravelerNote-v<版本号>.apk
+ *
  * 只匹配 app-release.apk：没有签名配置时 AGP 产出的是 app-release-unsigned.apk，
- * 会被这里排除，避免把未签名包当成发布包。
+ * 会被这里排除，避免把未签名包当成发布包（此时带版本号的那份也不会生成）。
+ *
+ * 两份都留：`app-release.apk` 文件名固定，方便本地覆盖安装；
+ * `TravelerNote-v<版本号>.apk` 与 GitHub Release 资产同名，发版直接上传它。
+ * 版本号取自 defaultConfig.versionName，改版本号后文件名自动跟着变。
+ *
+ * 注意：这里**只新增/覆盖同名文件，绝不删除 apk/ 里的任何东西** ——
+ * 历史版本包（1.1.5、1.1.4…）要一直留着，方便随时回退安装，不要加清理逻辑。
  */
 val apkRepoDir = rootProject.layout.projectDirectory.dir("apk")
+
+/** 版本号（改 defaultConfig.versionName 后，带版本号的文件名会自动跟着变）。 */
+val appVersionName: String = android.defaultConfig.versionName ?: "unknown"
 
 tasks.register<Copy>("copyReleaseApkToRepo") {
     from(layout.buildDirectory.dir("outputs/apk/release")) {
         include("app-release.apk")
     }
     into(apkRepoDir)
+    doLast {
+        val src = layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
+        if (!src.exists()) {
+            logger.warn("未找到已签名的 app-release.apk，跳过带版本号的复制")
+            return@doLast
+        }
+        val dest = apkRepoDir.file("TravelerNote-v$appVersionName.apk").asFile
+        dest.parentFile?.mkdirs()
+        src.copyTo(dest, overwrite = true)
+        logger.lifecycle("带版本号的安装包：apk/TravelerNote-v$appVersionName.apk（${dest.length()} 字节）")
+    }
 }
 
 tasks.matching { it.name == "assembleRelease" }.configureEach {

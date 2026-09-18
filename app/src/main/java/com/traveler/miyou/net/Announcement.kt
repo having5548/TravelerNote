@@ -47,15 +47,24 @@ data class AnnouncementResult(
     val total: Int get() = groups.sumOf { it.notices.size }
 }
 
-/** 公告正文里被转义的时间标签，形如 `&lt;t class="t_gl"&gt;7天&lt;/t&gt;`，只保留文字。 */
-private val XML_TIME_TAG = Regex(
-    "&lt;t class=\"t_(?:gl|lc)\".*?&gt;(?:<span .*?>)?(.*?)(?:</span>)?&lt;/t&gt;",
-    RegexOption.DOT_MATCHES_ALL
-)
-
-/** 清掉正文里的时间标签（页面自己会渲染计时，这里直接显示成固定文字）。 */
-fun cleanNoticeHtml(html: String): String =
-    XML_TIME_TAG.replace(html) { it.groupValues[1] }
+/**
+ * 清掉正文里被转义的时间标签（形如 `&lt;t class="t_gl"&gt;7天&lt;/t&gt;`），只保留文字。
+ *
+ * 正则在函数内编译并用 `Throwable` 兜底：Android 的 `java.util.regex` 与桌面 JVM 并不完全一致，
+ * 万一哪台设备上编译不过，也只是显示原文，绝不会因为这个把应用搞崩
+ * （放在顶层 val 里的话，类初始化失败会抛 `ExceptionInInitializerError`，那是 Error，接不住的）。
+ */
+fun cleanNoticeHtml(html: String): String {
+    if (html.isBlank()) return html
+    return try {
+        Regex(
+            "&lt;t class=\"t_(?:gl|lc)\".*?&gt;(?:<span .*?>)?(.*?)(?:</span>)?&lt;/t&gt;",
+            RegexOption.DOT_MATCHES_ALL
+        ).replace(html) { it.groupValues[1] }
+    } catch (t: Throwable) {
+        html
+    }
+}
 
 private val TIME_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
 
@@ -87,7 +96,7 @@ private fun mergeContent(contentMap: Map<Int, String>, typeId: Int, typeLabel: S
                 type = a.optInt("type", 0),
                 startMs = parseTime(a.optString("start_time", "")),
                 endMs = parseTime(a.optString("end_time", "")),
-                content = XML_TIME_TAG.replace(html) { it.groupValues[1] }
+                content = cleanNoticeHtml(html)
             )
         )
     }

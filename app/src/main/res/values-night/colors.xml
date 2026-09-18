@@ -9,4 +9,8 @@
 
     <!-- 有背景图时状态栏压的薄雾（深色） -->
     <color name="scrim_status_bar">#CC000000</color>
+
+    <!-- 资讯来源分段控件（深色） -->
+    <color name="seg_track">#20232E</color>
+    <color name="seg_thumb">#3C4250</color>
 </resources>

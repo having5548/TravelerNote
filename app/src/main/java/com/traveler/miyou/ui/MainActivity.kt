@@ -37,6 +37,29 @@ private const val AUTO_REFRESH_INTERVAL_MS = 60_000L
 /** 「游戏资讯」自动刷新的节流间隔（手动点刷新不受限制）。 */
 private const val NEWS_INTERVAL_MS = 10 * 60_000L
 
+/**
+ * 在页面脚本执行前注入：屏蔽「打开 App / 下载客户端」这类入口。
+ * 真正的兜底在 WebViewClient 与 DownloadListener（非 http(s)、apk 一律拦掉）。
+ */
+private const val BLOCK_JS = """
+    (function () {
+      if (window._hbk_n) return;
+      window._hbk_n = true;
+      window.open = function () { return null; };
+      document.addEventListener('click', function (e) {
+        var el = e.target;
+        while (el && el.tagName !== 'A') { el = el.parentElement; }
+        if (!el) return;
+        var h = el.getAttribute('href') || el.getAttribute('data-href') || '';
+        if (/^(bilibili|xiaoheihe|heybox|market|intent|snssdk|weixin|taobao|openapp):/i.test(h) ||
+            /\.apk(\?|$)/i.test(h)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+    })();
+"""
+
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -46,6 +69,21 @@ class MainActivity : AppCompatActivity() {
 
     /** 抓官方 B 站动态用的隐藏 WebView（见 BiliDynamicWeb）。 */
     private lateinit var biliWeb: BiliDynamicWeb
+
+    /** 资讯来源：0 官方 / 1 B站。 */
+    private var newsSource = 0
+
+    /** B站动态上次抓取成功的时间（切来源时不重复抓）。 */
+    private var biliLoadedAt = 0L
+
+    /** 公告详情打开时的返回键回调（详情是同一页里的覆盖层，不是新 Activity）。 */
+    private var noticeBackCallback: androidx.activity.OnBackPressedCallback? = null
+
+    /** 公告详情覆盖层：**第一次点开时才创建**（见 ensureNoticeOverlay）。 */
+    private var noticeOverlay: android.widget.LinearLayout? = null
+    private var noticeToolbar: com.google.android.material.appbar.MaterialToolbar? = null
+    private var noticeProgress: android.widget.ProgressBar? = null
+    private var noticeWeb: android.webkit.WebView? = null
 
     private var captchaContinuation: kotlin.coroutines.Continuation<String?>? = null
 
@@ -64,6 +102,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashLog.install(this)
         ThemeHelper.apply(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -93,6 +132,10 @@ class MainActivity : AppCompatActivity() {
         // 游戏资讯手动刷新
         binding.newsRefresh.setOnClickListener { loadNews(force = true) }
         biliWeb = BiliDynamicWeb(this, binding.newsBiliContainer)
+
+        // 资讯来源切换：官方 / B站（iOS 风格分段控件，选中态在代码里画）
+        binding.srcOfficial.setOnClickListener { selectNewsSource(0) }
+        binding.srcBili.setOnClickListener { selectNewsSource(1) }
 
         // 多账号：到期就统一刷新一次所有账号的凭证，避免长期不用导致 cookie 失效
         com.traveler.miyou.store.AccountRefresher.refreshIfDue(this, lifecycleScope)
@@ -138,6 +181,7 @@ class MainActivity : AppCompatActivity() {
 
         showHomePage()
         refreshHome()
+        showLastCrash()
     }
 
     override fun onResume() {
@@ -163,9 +207,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHomePage() {
+        hideNoticeOverlay()
         binding.recycler.visibility = View.VISIBLE
         binding.charactersScroll.visibility = View.GONE
-        binding.newsScroll.visibility = View.GONE
+        binding.newsPage.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
         ThemeHelper.applyToolbarScrim(this)
@@ -174,9 +219,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCharactersPage() {
+        hideNoticeOverlay()
         binding.recycler.visibility = View.GONE
         binding.charactersScroll.visibility = View.VISIBLE
-        binding.newsScroll.visibility = View.GONE
+        binding.newsPage.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
         ThemeHelper.applyToolbarScrim(this)
@@ -185,17 +231,58 @@ class MainActivity : AppCompatActivity() {
         applyRootTopInset(false)
     }
 
-    /** 游戏资讯：活动日历 / UP 池 / 游戏公告 / 官方 B 站动态。 */
+    /** 游戏资讯：顶部切换来源（官方 / B站）。 */
     private fun showNewsPage() {
+        hideNoticeOverlay()
         binding.recycler.visibility = View.GONE
         binding.charactersScroll.visibility = View.GONE
-        binding.newsScroll.visibility = View.VISIBLE
+        binding.newsPage.visibility = View.VISIBLE
         binding.toolsWebContainer.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
         ThemeHelper.applyToolbarScrim(this)
         binding.toolbar.title = getString(R.string.tab_news)
         applyRootTopInset(false)
-        loadNews(force = false)
+        applyNewsSource()
+    }
+
+    private fun selectNewsSource(index: Int) {
+        if (newsSource == index) return
+        newsSource = index
+        applyNewsSource()
+    }
+
+    /** 按当前来源显示对应容器，并（首次或过期时）加载数据。 */
+    private fun applyNewsSource() {
+        renderSourceSelector()
+        binding.newsScroll.visibility = if (newsSource == 0) View.VISIBLE else View.GONE
+        binding.newsBiliScroll.visibility = if (newsSource == 1) View.VISIBLE else View.GONE
+        when (newsSource) {
+            0 -> loadNews(force = false)
+            else -> loadBiliDynamics(force = false)
+        }
+    }
+
+    /**
+     * 分段控件的选中态：选中的那块画成白色胶囊 + 主文字色，未选中的透明 + 次要文字色。
+     * 全程无描边 —— 之前用 Material 的 outlined 按钮会在外面围一圈方框。
+     */
+    private fun renderSourceSelector() {
+        val primary = themedColor(android.R.attr.textColorPrimary, 0xFF1F2430.toInt())
+        val secondary = themedColor(android.R.attr.textColorSecondary, 0xFF8A93A6.toInt())
+        val official = newsSource == 0
+        binding.srcOfficial.setBackgroundResource(if (official) R.drawable.seg_thumb_bg else 0)
+        binding.srcOfficial.setTextColor(if (official) primary else secondary)
+        binding.srcOfficial.setTypeface(null, if (official) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        binding.srcBili.setBackgroundResource(if (official) 0 else R.drawable.seg_thumb_bg)
+        binding.srcBili.setTextColor(if (official) secondary else primary)
+        binding.srcBili.setTypeface(null, if (official) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
+    }
+
+    /** 读取主题里的颜色（`?android:attr/textColorXxx`），拿不到就用兜底值。 */
+    private fun themedColor(attr: Int, fallback: Int): Int {
+        val value = android.util.TypedValue()
+        if (!theme.resolveAttribute(attr, value, true)) return fallback
+        return if (value.resourceId != 0) getColor(value.resourceId) else value.data
     }
 
     /**
@@ -204,9 +291,10 @@ class MainActivity : AppCompatActivity() {
      * 返回键 / 侧滑返回由 ToolsWeb 注册的回调接管（网页后退 → 退到底回首页）。
      */
     private fun showToolsPage() {
+        hideNoticeOverlay()
         binding.recycler.visibility = View.GONE
         binding.charactersScroll.visibility = View.GONE
-        binding.newsScroll.visibility = View.GONE
+        binding.newsPage.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.VISIBLE
         binding.toolbar.visibility = View.GONE
         applyRootTopInset(true)
@@ -218,6 +306,14 @@ class MainActivity : AppCompatActivity() {
         if (::binding.isInitialized) {
             binding.toolsWeb.destroy()
         }
+        noticeWeb?.let { web ->
+            runCatching { noticeOverlay?.removeView(web) }
+            runCatching { web.destroy() }
+        }
+        noticeWeb = null
+        noticeOverlay = null
+        noticeToolbar = null
+        noticeProgress = null
         if (::biliWeb.isInitialized) {
             biliWeb.destroy()
         }
@@ -680,13 +776,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 属性值的显示：接口给的百分比可能是分数（0.625）也可能是百分数（62.5），
-     * 小于等于 1 的一律按分数处理，乘 100 再补 '%'，两种口径都能显示对。
+     * 哪些是百分比词条。**必须逐项枚举**：像 `(type in 20..30)` 这种区间写法会把
+     * 28（元素精通）也当成百分比 —— 元素精通是整数点数，不是百分比。
+     * 列表对齐胡桃工具箱 `FightPropertyExtension.PercentProps`。
      */
-    private fun percentLike(type: Int): Boolean =
-        type == 3 || type == 6 || type == 9 ||
-            (type in 20..30) || (type in 40..46) || (type in 50..56) ||
-            type == 80 || type == 81
+    private fun percentLike(type: Int): Boolean = when (type) {
+        3, 6, 9, 11, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 80, 81 -> true
+        in 40..47 -> true
+        in 50..56 -> true
+        else -> false
+    }
 
     private fun trimNum(v: Float): String {
         val rounded = Math.round(v * 10f) / 10f
@@ -743,7 +842,7 @@ class MainActivity : AppCompatActivity() {
             append(c.name)
             val element = com.traveler.miyou.net.elementName(c.element)
             if (element.isNotBlank()) append("  ·  ").append(element)
-            if (c.rarity > 0) append("  ").append(c.rarity).append("★")
+            if (c.rarity > 0) append("  ").append("（").append(c.rarity).append("★）")
         }
         item.lvWeapon.text = buildString {
             append("Lv.").append(c.level)
@@ -770,7 +869,7 @@ class MainActivity : AppCompatActivity() {
             append(getString(R.string.characters_lv)).append("：").append(c.level)
             if (c.rarity > 0) {
                 append("\n").append(getString(R.string.characters_rarity)).append("：")
-                    .append(c.rarity).append("★")
+                    .append("（").append(c.rarity).append("★）")
             }
             if (element.isNotBlank()) {
                 append("\n").append(getString(R.string.characters_element)).append("：").append(element)
@@ -782,7 +881,7 @@ class MainActivity : AppCompatActivity() {
             if (c.weaponName.isNotBlank()) {
                 append("\n\n").append(getString(R.string.characters_weapon)).append("：").append(c.weaponName)
                 append(" Lv.").append(c.weaponLevel)
-                if (c.weaponRarity > 0) append("  ").append(c.weaponRarity).append("★")
+                if (c.weaponRarity > 0) append("  ").append("（").append(c.weaponRarity).append("★）")
                 if (c.weaponAffix > 1) append("  ").append(c.weaponAffix).append("精")
             }
             if (c.skills.isNotEmpty()) {
@@ -810,16 +909,24 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 c.relics.forEach { r ->
-                    append("\n· ").append(r.posName)
-                    if (r.setName.isNotBlank()) append(' ').append(r.setName)
+                    // 一行头：部位 · 套装（5★） +20
+                    append("\n· ").append(r.posName.ifBlank { "圣遗物" })
+                    if (r.setName.isNotBlank()) {
+                        append("  ").append(r.setName)
+                        if (r.rarity > 0) append("（").append(r.rarity).append("★）")
+                    } else if (r.rarity > 0) {
+                        append("（").append(r.rarity).append("★）")
+                    }
                     if (r.level > 0) append("  +").append(r.level)
-                    if (r.rarity > 0) append(' ').append(r.rarity).append('★')
+                    // 主词条单独一行，数值对齐好读
                     r.main?.let {
-                        append("\n    主词条：").append(it.name).append(' ').append(fmtRelicValue(it))
+                        append("\n      ").append(it.name).append("  ").append(fmtRelicValue(it))
                     }
                     if (r.subs.isNotEmpty()) {
-                        append("\n    副词条：")
-                            .append(r.subs.joinToString("、") { s -> "${s.name} ${fmtRelicValue(s)}" })
+                        // 一个词条一行，竖着排，扫读更清楚
+                        r.subs.forEach { s ->
+                            append("\n      ").append(s.name).append("  ").append(fmtRelicValue(s))
+                        }
                     }
                 }
             }
@@ -870,8 +977,6 @@ class MainActivity : AppCompatActivity() {
         binding.newsActs.addView(statusView(getString(R.string.news_loading)))
         binding.newsPools.removeAllViews()
         binding.newsNotices.removeAllViews()
-        binding.newsDynamics.removeAllViews()
-        binding.newsDynamics.addView(statusView(getString(R.string.news_loading)))
 
         lifecycleScope.launch {
             // 1) 活动日历 + UP 池（需要登录态与角色 uid）
@@ -914,35 +1019,41 @@ class MainActivity : AppCompatActivity() {
                 binding.newsNotices.addView(statusView(getString(R.string.news_fail)))
             }
 
-            // 3) 原神官方 B 站内容：先用隐藏 WebView 抓真实动态（页面自己的请求带风控 cookie），
-            //    抓不到再退回官方投稿 + 专栏（客户端接口，无需登录）
-            binding.newsDynamics.removeAllViews()
-            binding.newsDynamics.addView(statusView(getString(R.string.news_loading)))
-            biliWeb.capture { raw ->
-                if (isFinishing || isDestroyed) return@capture
-                lifecycleScope.launch {
-                    val captured = if (raw != null) {
-                        withContext(Dispatchers.IO) {
-                            com.traveler.miyou.net.parseCapturedDynamics(raw)
-                        }
-                    } else {
-                        null
-                    }
-                    val dyn = if (captured != null && captured.ok && captured.items.isNotEmpty()) {
-                        captured
-                    } else {
-                        withContext(Dispatchers.IO) {
-                            com.traveler.miyou.net.fetchOfficialBiliContent()
-                        }
-                    }
-                    if (isFinishing || isDestroyed) return@launch
-                    binding.newsDynamics.removeAllViews()
-                    renderDynamics(dyn)
-                }
-            }
-
             lastNewsAt = System.currentTimeMillis()
             binding.newsUpdated.text = getString(R.string.news_updated, fmtDateTime(lastNewsAt))
+        }
+    }
+
+    /**
+     * B站来源：先用隐藏 WebView 抓官方动态页的数据（页面自己的请求带 B 站下发的风控 cookie），
+     * 抓不到再退回官方投稿 + 专栏（客户端接口，无需登录）。
+     */
+    private fun loadBiliDynamics(force: Boolean) {
+        if (!force && biliLoadedAt > 0L && System.currentTimeMillis() - biliLoadedAt < NEWS_INTERVAL_MS) return
+        binding.newsDynamics.removeAllViews()
+        binding.newsDynamics.addView(statusView(getString(R.string.news_loading)))
+        biliWeb.capture { raw ->
+            if (isFinishing || isDestroyed) return@capture
+            lifecycleScope.launch {
+                val captured = if (raw != null) {
+                    withContext(Dispatchers.IO) {
+                        com.traveler.miyou.net.parseCapturedDynamics(raw)
+                    }
+                } else {
+                    null
+                }
+                val dyn = if (captured != null && captured.ok && captured.items.isNotEmpty()) {
+                    captured
+                } else {
+                    withContext(Dispatchers.IO) {
+                        com.traveler.miyou.net.fetchOfficialBiliContent()
+                    }
+                }
+                if (isFinishing || isDestroyed) return@launch
+                biliLoadedAt = System.currentTimeMillis()
+                binding.newsDynamics.removeAllViews()
+                renderDynamics(dyn)
+            }
         }
     }
 
@@ -1168,7 +1279,7 @@ class MainActivity : AppCompatActivity() {
                 item.videoTitle.text = buildString {
                     append(getString(R.string.news_video_prefix))
                     if (d.meta.isNotBlank()) append("  ·  ").append(d.meta)
-                    append("  ·  ").append(getString(R.string.news_bili_open))
+                    append("  ·  ").append(getString(R.string.news_click_open_web))
                 }
             }
 
@@ -1178,45 +1289,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 打开一条 B 站内容：优先用官方深链（投稿接口本身就返回
-     * `bilibili://video/<aid>` / `bilibili://article/<id>`），没装客户端再回落到网页版。
+     * 打开一条 B 站内容：**在应用内**用 WebView 打开对应网页 ——
+     * 不再唤起哔哩哔哩客户端、也不跳系统浏览器。
      */
     private fun openBili(d: com.traveler.miyou.net.BiliDynamicItem) {
-        val schemes = ArrayList<String>()
-        if (d.deepLink.isNotBlank()) schemes.add(d.deepLink)
-        if (d.isVideo && d.aid > 0) schemes.add("bilibili://video/${d.aid}")
-        if (d.isVideo && d.bvid.isNotBlank()) schemes.add("bilibili://video/${d.bvid}")
-        for (s in schemes) {
-            if (tryOpenScheme(s)) return
+        val url = d.webUrl.ifBlank {
+            if (d.bvid.isNotBlank()) "${ApiConst.BILI_WWW}/video/${d.bvid}" else ""
         }
-        if (d.webUrl.isNotBlank()) {
-            android.widget.Toast
-                .makeText(this, getString(R.string.news_bili_missing), android.widget.Toast.LENGTH_SHORT)
-                .show()
-            openExternal(d.webUrl)
-        }
-    }
-
-    private fun tryOpenScheme(url: String): Boolean {
-        return try {
-            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
-            if (intent.resolveActivity(packageManager) != null) {
-                startActivity(intent)
-                true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun openExternal(url: String) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-        } catch (e: Exception) {
-            // 没有浏览器就静默失败
-        }
+        if (url.isBlank()) return
+        val title = if (d.kind.isBlank()) "B站" else "B站 · ${d.kind}"
+        openSiteInApp(title, url)
     }
 
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
@@ -1226,25 +1308,272 @@ class MainActivity : AppCompatActivity() {
         setPadding(0, dp(2), 0, dp(6))
     }
 
-    /** 公告详情：**立刻**在应用内打开，正文交给详情页自己拉（避免点一下半天没反应）。 */
-    private fun openNotice(n: com.traveler.miyou.net.NewsNotice) {
-        try {
-            startActivity(
-                AnnouncementActivity.intent(
-                    this,
-                    n.annId,
-                    n.title,
-                    n.subtitle,
-                    n.banner,
-                    store.roleRegion() ?: "cn_gf01",
-                    n.content
-                )
+    // ---------------- 游戏公告详情（应用内同一页打开，不新开 Activity） ----------------
+
+    /**
+     * 应用内网页覆盖层**第一次点开时才创建**（不写进 activity_main.xml）：
+     * 冷启动路径与 1.1.5 完全一致，详情相关的东西一件都不参与启动。
+     * 公告正文、B站条目、小黑盒条目都用它。
+     */
+    private fun ensureWebOverlay(): android.widget.LinearLayout {
+        noticeOverlay?.let { return it }
+
+        val tv = android.util.TypedValue()
+        theme.resolveAttribute(android.R.attr.actionBarSize, tv, true)
+        val barHeight = android.util.TypedValue
+            .complexToDimensionPixelSize(tv.data, resources.displayMetrics)
+
+        val night = NoticeHtml.isNight(this)
+        val bg = if (night) android.graphics.Color.parseColor("#121212") else android.graphics.Color.WHITE
+
+        val toolbar = com.google.android.material.appbar.MaterialToolbar(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, barHeight
             )
-        } catch (e: Exception) {
+            setNavigationIcon(R.drawable.ic_back)
+            setNavigationOnClickListener { closeNotice() }
+        }
+
+        val progress = android.widget.ProgressBar(
+            this, null, android.R.attr.progressBarStyleHorizontal
+        ).apply {
+            isIndeterminate = true
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(3)
+            )
+            visibility = View.GONE
+        }
+
+        val web = android.webkit.WebView(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+            // 详情正文本身是静态 HTML，但 B站 / 小黑盒 的页面需要 JS
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = true
+            settings.setSupportMultipleWindows(false)
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            // 明确底色：透明底 + 深色字在某些主题组合下会看起来"一片空白"
+            setBackgroundColor(bg)
+            webViewClient = object : android.webkit.WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: android.webkit.WebView?,
+                    request: android.webkit.WebResourceRequest?
+                ): Boolean {
+                    val url = request?.url?.toString() ?: return false
+                    // 应用内打开：http(s) 一律留在本 WebView 里继续加载；
+                    // 唤起客户端 / 应用市场 / 下安装包的跳转全部拦掉
+                    if (isBlockedNavigation(url)) {
+                        notifyWebBlocked()
+                        return true
+                    }
+                    return false
+                }
+
+                override fun onPageStarted(
+                    view: android.webkit.WebView?,
+                    url: String?,
+                    favicon: android.graphics.Bitmap?
+                ) {
+                    // 页面脚本执行前注入：屏蔽「打开 App / 下载客户端」入口
+                    view?.evaluateJavascript(BLOCK_JS, null)
+                }
+
+                override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                    noticeProgress?.visibility = View.GONE
+                    view?.evaluateJavascript(BLOCK_JS, null)
+                }
+            }
+            // B站手机网页会偷偷下一份客户端 apk，这里一律拒绝
+            setDownloadListener { _, _, _, _, _ -> notifyWebBlocked() }
+        }
+
+        val overlay = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            visibility = View.GONE
+            setBackgroundColor(bg)
+        }
+        overlay.addView(toolbar)
+        overlay.addView(progress)
+        overlay.addView(web)
+
+        val parent = (binding.recycler.parent as? android.view.ViewGroup) ?: binding.root
+        val lp: android.view.ViewGroup.LayoutParams =
+            if (parent is android.widget.FrameLayout) {
+                android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            } else {
+                android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+        parent.addView(overlay, lp)
+
+        val callback = object : androidx.activity.OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = closeNotice()
+        }
+        onBackPressedDispatcher.addCallback(this, callback)
+        noticeBackCallback = callback
+
+        noticeOverlay = overlay
+        noticeToolbar = toolbar
+        noticeProgress = progress
+        noticeWeb = web
+        return overlay
+    }
+
+    /**
+     * 打开公告详情：**立刻**在当前页显示（标题 / 横幅 / "正在加载正文"），
+     * 正文随后在后台拉取并替换；渲染失败退回纯文本，任何一步都不允许把应用搞崩。
+     */
+    private fun openNotice(n: com.traveler.miyou.net.NewsNotice) {
+        val overlay = try {
+            ensureWebOverlay()
+        } catch (e: Throwable) {
+            null
+        }
+        if (overlay == null) {
             android.widget.Toast.makeText(
                 this, getString(R.string.news_notice_open_failed), android.widget.Toast.LENGTH_SHORT
             ).show()
+            return
         }
+
+        noticeToolbar?.title = n.title
+        overlay.visibility = View.VISIBLE
+        overlay.bringToFront()
+        binding.toolbar.visibility = View.GONE
+        noticeProgress?.visibility = View.VISIBLE
+        noticeBackCallback?.isEnabled = true
+        loadNoticeHtml(NoticeHtml.build(this, n.title, n.subtitle, n.banner, "<p>正在加载正文…</p>"))
+
+        lifecycleScope.launch {
+            val html = withContext(Dispatchers.IO) {
+                try {
+                    com.traveler.miyou.net.cleanNoticeHtml(
+                        com.traveler.miyou.net.fetchAnnouncementContents(
+                            store.roleRegion() ?: "cn_gf01"
+                        )[n.annId].orEmpty()
+                    )
+                } catch (e: Exception) {
+                    ""
+                }
+            }
+            if (isFinishing || isDestroyed) return@launch
+            if (noticeOverlay?.visibility != View.VISIBLE) return@launch
+            noticeProgress?.visibility = View.GONE
+            val body = html.ifBlank { "<p>正文加载失败，请检查网络后重试。</p>" }
+            loadNoticeHtml(NoticeHtml.build(this@MainActivity, n.title, n.subtitle, n.banner, body))
+        }
+    }
+
+    /** WebView 渲染失败就退回纯文本。 */
+    private fun loadNoticeHtml(html: String) {
+        val web = noticeWeb ?: return
+        try {
+            web.loadDataWithBaseURL(
+                "https://webstatic.mihoyo.com/", html, "text/html", "utf-8", null
+            )
+        } catch (e: Throwable) {
+            runCatching {
+                web.loadDataWithBaseURL(null, NoticeHtml.plainHtml(html), "text/html", "utf-8", null)
+            }
+        }
+    }
+
+    // ---------------- 应用内网页覆盖层（公告正文 / B站条目共用，见 ensureWebOverlay） ----------------
+
+    private fun closeNotice() = hideNoticeOverlay(restoreToolbar = true)
+
+    /** 切页签 / 点返回时收起公告详情覆盖层（还没创建过就是空操作）。 */
+    private fun hideNoticeOverlay(restoreToolbar: Boolean = false) {
+        noticeOverlay?.visibility = View.GONE
+        noticeProgress?.visibility = View.GONE
+        noticeBackCallback?.isEnabled = false
+        if (restoreToolbar && binding.newsPage.visibility == View.VISIBLE) {
+            binding.toolbar.visibility = View.VISIBLE
+        }
+    }
+
+    /**
+     * 应用内打开网页（不唤起客户端、不跳浏览器）。
+     * http(s) 会在覆盖层里继续加载；唤起 App / 应用市场 / apk 的跳转会被拦掉。
+     */
+    private fun openSiteInApp(title: String, url: String) {
+        if (url.isBlank()) return
+        val overlay = try {
+            ensureWebOverlay()
+        } catch (e: Throwable) {
+            null
+        }
+        if (overlay == null) {
+            android.widget.Toast.makeText(
+                this, getString(R.string.news_notice_open_failed), android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        noticeToolbar?.title = title
+        overlay.visibility = View.VISIBLE
+        overlay.bringToFront()
+        binding.toolbar.visibility = View.GONE
+        noticeProgress?.visibility = View.VISIBLE
+        noticeBackCallback?.isEnabled = true
+        loadWebUrl(url)
+    }
+
+    private fun loadWebUrl(url: String) {
+        val web = noticeWeb ?: return
+        try {
+            web.loadUrl(url)
+        } catch (e: Throwable) {
+            runCatching {
+                web.loadDataWithBaseURL(null, NoticeHtml.plainHtml(url), "text/html", "utf-8", null)
+            }
+        }
+    }
+
+    /** 需要拦掉的跳转：唤起客户端 / 应用市场 / 安装包下载等非 http(s) 目标。 */
+    private fun isBlockedNavigation(url: String): Boolean {
+        val lower = url.lowercase()
+        if (lower.contains(".apk")) return true
+        val scheme = lower.substringBefore(':', "")
+        return scheme !in setOf("http", "https", "about", "data", "javascript", "file", "content", "blob")
+    }
+
+    private fun notifyWebBlocked() {
+        android.widget.Toast
+            .makeText(this, getString(R.string.news_web_blocked), android.widget.Toast.LENGTH_SHORT)
+            .show()
+    }
+
+    /** 上一次闪退的堆栈（CrashLog 写的），弹出来方便反馈。 */
+    private fun showLastCrash() {
+        val file = java.io.File(cacheDir, CrashLog.FILE_NAME)
+        if (!file.exists()) return
+        val text = try {
+            file.readText()
+        } catch (e: Exception) {
+            ""
+        }
+        runCatching { file.delete() }
+        if (text.isBlank()) return
+        val view = TextView(this).apply {
+            this.text = text
+            textSize = 11f
+            setTextIsSelectable(true)
+            setPadding(dp(16), dp(8), dp(16), 0)
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(view) }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.crash_title))
+            .setView(scroll)
+            .setPositiveButton(R.string.close, null)
+            .show()
     }
 
     private fun statusView(text: String): TextView {

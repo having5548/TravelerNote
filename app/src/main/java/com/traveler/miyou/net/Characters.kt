@@ -65,7 +65,7 @@ data class RelicInfo(
     val subs: List<RelicProperty>
 )
 
-/** 天赋等级：skill_type 1 / 2 / 3 → 普通攻击 / 元素战技 / 元素爆发。 */
+/** 天赋等级：战斗天赋（普攻 / 战技 / 爆发），固有天赋不显示。 */
 data class SkillLevel(val name: String, val level: Int)
 
 /**
@@ -222,20 +222,26 @@ private fun parseRelics(arr: JSONArray?): List<RelicInfo> {
     return out.sortedBy { it.pos }
 }
 
+/**
+ * 天赋等级。
+ *
+ * 战绩接口里 `skill_type` 只有两种（对齐胡桃工具箱的 `SkillType`）：
+ * **1 = 战斗天赋**（就是普通攻击 / 元素战技 / 元素爆发这三条），**2 = 固有天赋**（不显示）。
+ * 三条战斗天赋靠 `skill_id` 升序区分先后：普通攻击 → 元素战技 → 元素爆发。
+ */
 private fun parseSkills(arr: JSONArray?): List<SkillLevel> {
     if (arr == null) return emptyList()
-    val out = ArrayList<SkillLevel>(3)
+    val combat = ArrayList<Pair<Int, Int>>(3)
     for (i in 0 until arr.length()) {
         val s = arr.optJSONObject(i) ?: continue
-        val name = when (s.optInt("skill_type", 0)) {
-            1 -> "普通攻击"
-            2 -> "元素战技"
-            3 -> "元素爆发"
-            else -> continue
-        }
-        out.add(SkillLevel(name, s.optInt("level", 0)))
+        if (s.optInt("skill_type", 0) != 1) continue
+        combat.add(s.optInt("skill_id", 0) to s.optInt("level", 0))
     }
-    return out
+    val names = listOf("普通攻击", "元素战技", "元素爆发")
+    return combat.sortedBy { it.first }
+        .mapIndexed { index, pair ->
+            SkillLevel(names.getOrElse(index) { "天赋" }, pair.second)
+        }
 }
 
 fun parseCharacterList(raw: String): CharacterListResult {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分段控件的选中滑块：iOS 那种浮起来的白色胶囊 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/seg_thumb" />
+    <corners android:radius="15dp" />
+</shape>

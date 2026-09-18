@@ -44,7 +44,7 @@ class BiliDynamicWeb(private val activity: Activity, private val container: View
             cacheMode = WebSettings.LOAD_DEFAULT
             userAgentString = DESKTOP_UA
         }
-        view.addJavascriptInterface(Bridge(), "AndroidBili")
+        view.addJavascriptInterface(Bridge(), BRIDGE_NAME)
         view.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 // 必须在页面脚本跑起来之前注入 hook
@@ -76,7 +76,7 @@ class BiliDynamicWeb(private val activity: Activity, private val container: View
             override fun run() {
                 if (finished) return
                 val v = web ?: return
-                v.evaluateJavascript("window.__biliDyn || ''") { value ->
+                v.evaluateJavascript("window._hbd || ''") { value ->
                     val json = decodeJsString(value)
                     if (json != null && json.contains("\"items\"")) finish(json)
                 }
@@ -134,6 +134,9 @@ class BiliDynamicWeb(private val activity: Activity, private val container: View
         private const val TIMEOUT_MS = 15_000L
         private const val POLL_MS = 800L
 
+        /** 注入给网页的 JS 桥名字起得没意义：`window.AndroidXxx` 这种名字本身就是"被内嵌"的指纹。 */
+        private const val BRIDGE_NAME = "_hb_b"
+
         /** 桌面版 UA：桌面动态页不需要登录也能渲染出动态列表。 */
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -145,9 +148,9 @@ class BiliDynamicWeb(private val activity: Activity, private val container: View
          */
         private val HOOK_JS = """
             (function () {
-              if (window.__biliHooked) return;
-              window.__biliHooked = true;
-              window.__biliDyn = '';
+              if (window._hbk_b) return;
+              window._hbk_b = true;
+              window._hbd = '';
               function project(text) {
                 try {
                   var o = JSON.parse(text);
@@ -195,8 +198,8 @@ class BiliDynamicWeb(private val activity: Activity, private val container: View
               function save(text) {
                 var p = project(text);
                 if (!p) return;
-                window.__biliDyn = p;
-                try { if (window.AndroidBili) window.AndroidBili.onData(p); } catch (e) {}
+                window._hbd = p;
+                try { if (window.$BRIDGE_NAME) window.$BRIDGE_NAME.onData(p); } catch (e) {}
               }
               function hit(u) { return String(u || '').indexOf('feed/space') >= 0; }
               var of = window.fetch;

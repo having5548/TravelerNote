@@ -114,16 +114,68 @@
         </androidx.core.widget.NestedScrollView>
 
         <!--
-          游戏资讯：活动日历 / UP 池 / 游戏公告 / 官方 B 站动态
-          公告详情在应用内打开（AnnouncementActivity），动态的视频用哔哩哔哩客户端深链唤起。
+          游戏资讯：顶部来源切换（官方 / B站）。
+          官方 = 活动日历 + UP 池 + 游戏公告；B站 = 原神官方账号动态。
+          公告正文与 B站条目点击都在应用内的 WebView 覆盖层里打开。
         -->
+        <LinearLayout
+            android:id="@+id/newsPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!--
+              来源切换：iOS 风格分段控件 —— 浅色圆角轨道 + 白色滑块，无描边、无外框。
+              选中态背景/文字色在代码里切换（renderSourceSelector）。
+            -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/seg_track_bg"
+                android:orientation="horizontal"
+                android:padding="3dp">
+
+                <TextView
+                    android:id="@+id/srcOfficial"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:background="@drawable/seg_thumb_bg"
+                    android:gravity="center"
+                    android:minWidth="76dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="@string/news_source_official"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/srcBili"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:gravity="center"
+                    android:minWidth="76dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="@string/news_source_bili"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
         <androidx.core.widget.NestedScrollView
             android:id="@+id/newsScroll"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:fillViewport="true"
-            android:overScrollMode="never"
-            android:visibility="gone">
+            android:overScrollMode="never">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -232,10 +284,30 @@
                     android:layout_marginTop="10dp"
                     android:orientation="vertical" />
 
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- B站来源：官方账号的动态（隐藏 WebView 抓到数据后原生排版） -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/newsBiliScroll"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:overScrollMode="never"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="24dp">
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
                     android:text="@string/news_dynamics"
                     android:textColor="?android:attr/textColorPrimary"
                     android:textSize="17sp"
@@ -266,6 +338,8 @@
                     android:layout_height="1dp" />
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
+            </FrameLayout>
+        </LinearLayout>
 
         <!--
           旅行工具：直接内嵌米游社官方工具页（不新开 Activity）。
