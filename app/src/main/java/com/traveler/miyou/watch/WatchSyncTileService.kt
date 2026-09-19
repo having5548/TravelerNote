@@ -22,10 +22,13 @@ class WatchSyncTileService : TileService() {
     override fun onClick() {
         super.onClick()
         val app = applicationContext
+        val store = SettingsStore(app)
         if (WatchSyncService.running) {
+            // 磁贴熄灭 = 关掉同步总开关，避免出现"开关还亮着但服务已死"的假状态
+            store.watchSyncEnabled = false
             WatchSyncService.stop(app)
         } else {
-            SettingsStore(app).watchSyncEnabled = true
+            store.watchSyncEnabled = true
             runCatching { WatchSyncService.start(app) }
         }
         refreshTile()

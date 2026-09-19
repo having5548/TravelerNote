@@ -9,25 +9,36 @@ import android.content.Intent
 import com.traveler.miyou.store.SettingsStore
 
 /**
- * 闹钟看门狗：按刷新间隔被 AlarmManager 唤醒，发现保活服务不在就重新拉起。
- * 常规 startForegroundService 被后台限制拒绝时，若 Shizuku 可用则改用 shell 启动（无后台启动限制）。
+ * 看门狗：闹钟触发 / 开机广播时检查保活服务，不在就拉起来。
+ *
+ * - 常规 `startForegroundService` 在 Android 12+ 后台会被拒（`ForegroundServiceStartNotAllowedException`），
+ *   此时若 Shizuku 可用就改用 shell 权限 `am start-foreground-service`（不受后台启动限制）。
+ * - 每次触发都会**重排下一次**一次性闹钟：比 `setRepeating` 更可靠（Repeating 在 Doze 下会被大幅推迟）。
+ *   即便服务正常销毁，闹钟也保留，所以被杀后还有机会被拉回来。
  */
 class WatchdogReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
-        if (WatchSyncService.running) return
         val settings = SettingsStore(app)
+
+        // 先排下一次，避免这次处理过程中被系统回收导致再也不触发
+        if (settings.watchSyncEnabled) {
+            WatchSyncService.scheduleWatchdog(app, settings.watchRefreshMinutes)
+        }
         if (!settings.watchSyncEnabled) return
-        runCatching {
-            WatchSyncService.start(app)
-        }.onFailure {
-            if (ShizukuKeeper.granted()) {
-                ShizukuKeeper.exec(
-                    app,
-                    "am start-foreground-service -n ${app.packageName}/.watch.WatchSyncService"
-                )
-            }
+        if (WatchSyncService.running) return
+
+        // 后台 startForegroundService 被拒时 Android 会**同步抛异常**，据此决定是否用 Shizuku 兜底
+        val started = runCatching { WatchSyncService.start(app) }.isSuccess
+        if (started) return
+
+        // 用 Shizuku（shell uid）拉起，绕过后台启动限制
+        if (ShizukuKeeper.granted()) {
+            ShizukuKeeper.exec(
+                app,
+                "am start-foreground-service -n ${app.packageName}/.watch.WatchSyncService"
+            )
         }
     }
 }

@@ -25,6 +25,7 @@ import com.traveler.miyou.net.ImageLoader
 import com.traveler.miyou.net.MiyouApi
 import com.traveler.miyou.store.CookieStore
 import com.traveler.miyou.store.SettingsStore
+import com.traveler.miyou.watch.WatchSyncService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -118,6 +119,8 @@ class MainActivity : AppCompatActivity() {
 
         store = CookieStore(this)
         settings = SettingsStore(this)
+        // 保活自愈：应用每次被打开时，只要开关是开的而服务没跑，就补起来
+        restoreWatchSync()
 
         adapter = NoteAdapter(
             onRefresh = { refreshHome() },
@@ -182,6 +185,17 @@ class MainActivity : AppCompatActivity() {
         showHomePage()
         refreshHome()
         showLastCrash()
+    }
+
+    /**
+     * 手表同步自愈入口：开关开着而服务没运行时把它补起来（此时应用在前台，启动前台服务不会被系统拒绝），
+     * 同时重排一次看门狗闹钟，避免"闹钟丢了 + 服务被杀"两个问题叠加后再也起不来。
+     */
+    private fun restoreWatchSync() {
+        if (!settings.watchSyncEnabled) return
+        WatchSyncService.scheduleWatchdog(this, settings.watchRefreshMinutes)
+        if (WatchSyncService.running) return
+        runCatching { WatchSyncService.start(this) }
     }
 
     override fun onResume() {

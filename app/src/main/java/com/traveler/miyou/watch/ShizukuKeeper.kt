@@ -36,15 +36,19 @@ object ShizukuKeeper {
         val args = Shizuku.UserServiceArgs(ComponentName(context, ShellUserService::class.java))
             .processNameSuffix("shell")
             .version(1)
-        Shizuku.bindUserService(args, object : ServiceConnection {
+        lateinit var connection: ServiceConnection
+        connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                runCatching {
-                    val shell = IShellService.Stub.asInterface(service)
-                    onResult(shell.exec(command))
-                }.onFailure { onResult("exec failed: ${it.message}") }
+                val output = runCatching {
+                    IShellService.Stub.asInterface(service).exec(command)
+                }.getOrElse { "exec failed: ${it.message}" }
+                onResult(output)
+                // 用完即解绑：之前每次都只 bind 不 unbind，看门狗跑久了会一直堆积绑定
+                runCatching { Shizuku.unbindUserService(args, connection, true) }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {}
-        })
+        }
+        runCatching { Shizuku.bindUserService(args, connection) }
     }
 }

@@ -3,16 +3,20 @@
 
 package com.traveler.miyou.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -25,9 +29,14 @@ import com.traveler.miyou.store.AccountRefresher
 import com.traveler.miyou.store.AccountStore
 import com.traveler.miyou.store.CookieStore
 import com.traveler.miyou.store.SettingsStore
+import com.traveler.miyou.watch.WatchSyncService
 import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
+
+    private companion object {
+        const val REQUEST_WATCH_NOTIFICATIONS = 4401
+    }
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var settings: SettingsStore
@@ -234,10 +243,41 @@ class SettingsActivity : AppCompatActivity() {
 
     // ---------------- 手表同步 ----------------
 
-    /** 设置页只保留入口，具体配置与状态在手表同步二级页（WatchSyncActivity）。 */
+    /**
+     * 设置列表里的手表同步行：右侧开关直接开/关后台同步，不必进二级页；
+     * 点整行仍进二级页看连接状态与保活方式。
+     */
     private fun setupWatchSync() {
+        binding.watchSyncSwitch.isChecked = settings.watchSyncEnabled
         binding.watchEntryRow.setOnClickListener {
             startActivity(Intent(this, WatchSyncActivity::class.java))
+        }
+        binding.watchSyncSwitch.setOnCheckedChangeListener { _, checked ->
+            settings.watchSyncEnabled = checked
+            if (checked) {
+                ensureWatchNotificationPermission()
+                runCatching { WatchSyncService.start(applicationContext) }
+            } else {
+                WatchSyncService.stop(applicationContext)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 二级页里可能改过开关，回来时对齐一次
+        binding.watchSyncSwitch.isChecked = settings.watchSyncEnabled
+    }
+
+    /** 保活通知在 Android 13+ 需要通知权限，开关一开就顺手申请。 */
+    private fun ensureWatchNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_WATCH_NOTIFICATIONS
+            )
         }
     }
 
