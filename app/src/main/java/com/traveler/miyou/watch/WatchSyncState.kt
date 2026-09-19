@@ -33,6 +33,8 @@ object WatchSyncState {
         val storageUsedKb: Long = -1,
         /** 最近一次成功把便签推给手表的时间。 */
         val notePushedAt: Long = 0L,
+        /** 最近一次推送包含的账号（最多 5 个，用「、」连接），null 表示没推过。 */
+        val accountsSummary: String? = null,
         /** 最近一次推送失败的原因（null 表示上次推送成功）。 */
         val noteError: String? = null,
         /** 保活服务启动失败的原因（例如被系统/ROM 拒绝后台启动）。 */

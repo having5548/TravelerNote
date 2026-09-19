@@ -4,7 +4,7 @@
   "private": true,
   "description": "旅行者便签手表接收端（REDMI Watch 5 / Vela JS 快应用）",
   "scripts": {
-    "start": "aiot server --watch",
+    "start": "aiot start --watch",
     "build": "node scripts/prebuild.js && aiot build",
     "release": "node scripts/prebuild.js && aiot release"
   },

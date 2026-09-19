@@ -284,7 +284,9 @@ class WatchSyncActivity : AppCompatActivity() {
                 )
                 st.notePushedAt > 0 -> getString(R.string.watch_diag_push_ok, fmt.format(Date(st.notePushedAt)))
                 else -> getString(R.string.watch_diag_push_none)
-            }
+            },
+            st.accountsSummary?.let { getString(R.string.watch_diag_accounts_fmt, it) }
+                ?: getString(R.string.watch_diag_accounts_none)
         )
         binding.diagText.text = lines.joinToString("\n")
         binding.syncSwitch.isChecked = settings.watchSyncEnabled

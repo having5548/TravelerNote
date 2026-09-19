@@ -1,8 +1,8 @@
 {
   "package": "com.traveler.miyou",
   "name": "旅行便签",
-  "versionName": "1.1.8",
-  "versionCode": 6,
+  "versionName": "1.1.10",
+  "versionCode": 7,
   "minPlatformVersion": 1200,
   "icon": "/common/logo.png",
   "deviceTypeList": [

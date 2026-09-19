@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,14 +35,22 @@ import kotlin.coroutines.resumeWithException
  * - 手表端 rpk 必须用本应用同一套签名（release.keystore 导出的 private/certificate pem）
  *
  * 消息协议（JSON 文本，经蓝牙由小米穿戴通道转发）：
- * - 手机 → 手表 dailyNote：{"type":"dailyNote","v":2,"date","ts","resin":{cur,max,rec},"coin":{cur,max},"task":{cur,total},"sign":{today,days}}
- *   rec = 树脂恢复剩余秒数，手表端用 ts+rec 推算回满时刻
- * - 手机 → 手表 dailyNote + noteError：数据拉取失败时也发一条，手表端直接显示原因
+ * - 手机 → 手表 dailyNote（v3 多账号）：
+ *   {"type":"dailyNote","v":3,"date","ts","active","count","skipped",
+ *    "accounts":[{"id","label","uid","region","ts","resin":{cur,max,rec},"coin":{cur,max},
+ *                 "task":{cur,total},"sign":{today,days},"error"?}, …最多 5 个],
+ *    // 同时把当前账号的字段再放一份到顶层，兼容只认 v2 的旧手表端
+ *    "resin":{…},"coin":{…},"task":{…},"sign":{…}}
+ *   rec = 树脂恢复剩余秒数，手表端用 ts+rec 推算回满时刻；单账号失败只写该条目的 error
+ * - 手机 → 手表 dailyNote + noteError：整体拉取失败时也发一条，手表端直接显示原因
  * - 手机 → 手表 getStorageInfo：{"action":"getStorageInfo"}，手表回 storageInfo
  * - 手表 → 手机 storageInfo：{"type":"storageInfo","versionName","buildTime","usedKb"}
  * - 手表 → 手机 requestNote：{"action":"requestNote"}，收到后自动回发一条最新 dailyNote
  */
 object WatchNoteSync {
+
+    /** 推送给手表的最大账号数（手表端按同样上限做切换）。 */
+    const val MAX_WATCH_ACCOUNTS = 5
 
     data class SendResult(val ok: Boolean, val message: String)
 
@@ -187,10 +196,21 @@ object WatchNoteSync {
         return try {
             sendMessage(app, node.id, payload)
             ensureListener(app, node.id)
+            val summary = payload.optJSONArray("accounts")?.let { arr ->
+                (0 until arr.length()).mapNotNull { i ->
+                    arr.optJSONObject(i)?.optString("label")?.takeIf { it.isNotBlank() }
+                }
+            }.orEmpty()
             WatchSyncState.update {
-                it.copy(noteError = null, notePushedAt = System.currentTimeMillis(), startError = null)
+                it.copy(
+                    noteError = null,
+                    notePushedAt = System.currentTimeMillis(),
+                    startError = null,
+                    accountsSummary = summary.joinToString("、").takeIf { summary.isNotEmpty() }
+                )
             }
-            SendResult(true, "已发送到「${node.name}」")
+            val suffix = if (summary.size > 1) "（${summary.size} 个账号）" else ""
+            SendResult(true, "已发送到「${node.name}」$suffix")
         } catch (e: Exception) {
             val reason = e.message ?: e.javaClass.simpleName
             WatchSyncState.update { it.copy(noteError = reason) }
@@ -275,47 +295,113 @@ object WatchNoteSync {
     }
 
     /**
-     * 拉取签到状态 + 实时便签，组装结构化 dailyNote 载荷。
-     * 与首页同一套数据口径；全程只读，绝不触发签到。失败时抛异常（含可读原因）。
+     * 拉取**所有账号**（最多 [MAX_WATCH_ACCOUNTS] 个）的签到状态与实时便签，组装 v3 多账号载荷。
+     * 数据来源与手机端多账号完全一致（同一套 AccountStore / CookieStore）。
+     *
+     * - 单个账号失败只在该条目上写 `error`，不影响其他账号
+     * - 顶层同时放当前账号的字段，兼容只认 v2 的旧手表端
+     * 全程只读，绝不触发签到。
      */
     private fun buildPayloadUncached(context: Context): JSONObject {
         val accounts = AccountStore(context)
-        val activeId = accounts.activeId() ?: throw IllegalStateException("手机端未登录，请先登录账号")
-        val store = CookieStore(context, activeId)
-        val deviceId = store.deviceId()
-        val deviceFp = DeviceFp.ensure(store)
-        val uid = store.roleUid() ?: throw IllegalStateException("手机端未绑定原神角色，请先在首页刷新一次")
-        val region = store.roleRegion() ?: throw IllegalStateException("手机端未绑定原神角色，请先在首页刷新一次")
+        val ids = accounts.ids()
+        if (ids.isEmpty()) throw IllegalStateException("手机端未登录，请先登录账号")
 
-        // 签到状态：只读查询
-        val info = MiyouApi.fetchLunaInfo(store.cookieTokenCookieStr(), deviceId, uid, region)
-        val signedToday = info.message.isBlank() && info.isSign
-        val signedDays = if (info.message.isBlank()) info.totalSignDay else 0
+        val picked = ids.take(MAX_WATCH_ACCOUNTS)
+        val activeId = accounts.activeId()
+        // 设备标识与账号无关（`device` 全局共用），随便取一个账号的 store 即可
+        val deviceStore = CookieStore(context, picked.first())
+        val deviceId = deviceStore.deviceId()
+        val deviceFp = DeviceFp.ensure(deviceStore)
 
-        // 实时便签（widget v2 / stoken 通道）
-        val resp = MiyouApi.fetchWidgetResin(store.stokenCookieStr(), deviceId, deviceFp)
-        val note = resp.note
+        val ts = System.currentTimeMillis()
+        val arr = JSONArray()
+        var activeEntry: JSONObject? = null
+        picked.forEach { id ->
+            val entry = buildAccountEntry(context, id, accounts.label(id), deviceId, deviceFp, ts)
+            if (id == activeId) activeEntry = entry
+            arr.put(entry)
+        }
+        val primary = activeEntry ?: arr.optJSONObject(0)
 
         val payload = JSONObject()
             .put("type", "dailyNote")
-            .put("v", 2)
+            .put("v", 3)
             .put("date", today())
-            .put("ts", System.currentTimeMillis())
-            .put("sign", JSONObject().put("today", signedToday).put("days", signedDays))
-        if (note != null) {
-            payload.put(
-                "resin",
-                JSONObject()
-                    .put("cur", note.currentResin)
-                    .put("max", note.maxResin)
-                    .put("rec", note.resinRecoveryTime)
-            )
-            payload.put("coin", JSONObject().put("cur", note.currentHomeCoin).put("max", note.maxHomeCoin))
-            payload.put("task", JSONObject().put("cur", note.finishedTaskNum).put("total", note.totalTaskNum))
-        } else {
-            payload.put("noteError", resp.message.ifBlank { "实时便签获取失败" })
+            .put("ts", ts)
+            .put("active", activeId ?: picked.first())
+            .put("count", arr.length())
+            .put("skipped", (ids.size - picked.size).coerceAtLeast(0))
+            .put("accounts", arr)
+
+        // 兼容 v2 手表端：当前账号的字段再放一份到顶层
+        primary?.let { p ->
+            for (key in arrayOf("resin", "coin", "task", "sign")) {
+                p.optJSONObject(key)?.let { payload.put(key, it) }
+            }
+            p.optString("error").takeIf { it.isNotBlank() }?.let { payload.put("noteError", it) }
         }
         return payload
+    }
+
+    /** 单个账号的便签条目；任何异常都收敛成条目上的 `error`，不影响其他账号。 */
+    private fun buildAccountEntry(
+        context: Context,
+        id: String,
+        label: String,
+        deviceId: String,
+        deviceFp: String,
+        ts: Long
+    ): JSONObject {
+        val entry = JSONObject()
+            .put("id", id)
+            .put("label", shortLabel(label, id))
+            .put("ts", ts)
+        try {
+            val store = CookieStore(context, id)
+            val uid = store.roleUid()
+            val region = store.roleRegion()
+            uid?.let { entry.put("uid", it) }
+            region?.let { entry.put("region", it) }
+            if (uid.isNullOrBlank() || region.isNullOrBlank()) {
+                throw IllegalStateException("未绑定原神角色，请先在手机端首页刷新一次")
+            }
+
+            // 签到状态：只读查询
+            val info = MiyouApi.fetchLunaInfo(store.cookieTokenCookieStr(), deviceId, uid, region)
+            val signedToday = info.message.isBlank() && info.isSign
+            val signedDays = if (info.message.isBlank()) info.totalSignDay else 0
+            entry.put("sign", JSONObject().put("today", signedToday).put("days", signedDays))
+
+            // 实时便签（widget v2 / stoken 通道）
+            val resp = MiyouApi.fetchWidgetResin(store.stokenCookieStr(), deviceId, deviceFp)
+            val note = resp.note
+            if (note != null) {
+                entry.put(
+                    "resin",
+                    JSONObject()
+                        .put("cur", note.currentResin)
+                        .put("max", note.maxResin)
+                        .put("rec", note.resinRecoveryTime)
+                )
+                entry.put("coin", JSONObject().put("cur", note.currentHomeCoin).put("max", note.maxHomeCoin))
+                entry.put("task", JSONObject().put("cur", note.finishedTaskNum).put("total", note.totalTaskNum))
+            } else {
+                entry.put("error", resp.message.ifBlank { "实时便签获取失败" })
+            }
+        } catch (e: Exception) {
+            entry.put("error", e.message ?: e.javaClass.simpleName)
+        }
+        return entry
+    }
+
+    /**
+     * 手表屏幕窄：昵称优先，没有昵称就退化成短 id；
+     * 手机端的完整展示名（昵称（UID xxx））留给手机页面用。
+     */
+    private fun shortLabel(label: String, id: String): String {
+        val nick = label.substringBefore("（").trim()
+        return if (nick.isNotBlank() && !nick.startsWith("账号 ")) nick else "账号 ${id.takeLast(4)}"
     }
 
     private fun today(): String =

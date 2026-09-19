@@ -105,7 +105,7 @@
     <string name="settings_github">GitHub</string>
     <string name="github_handle">having5548</string>
     <string name="settings_version">版本</string>
-    <string name="version_name">1.1.9</string>
+    <string name="version_name">1.1.10</string>
     <string name="disclaimer_title">免责声明</string>
 
     <string name="onboarding_title">使用前请仔细阅读</string>
@@ -293,6 +293,8 @@
     <string name="watch_diag_push_ok">最近推送：%1$s 成功</string>
     <string name="watch_diag_push_fail">最近推送：%1$s 失败（%2$s）</string>
     <string name="watch_diag_push_none">最近推送：尚未推送</string>
+    <string name="watch_diag_accounts_fmt">推送的账号：%1$s（手表端可点按切换，最多 5 个）</string>
+    <string name="watch_diag_accounts_none">推送的账号：暂无</string>
     <string name="watch_tile_add">一键添加到快捷设置</string>
     <string name="watch_tile_add_requested">已请求添加「手表同步」磁贴，请在下拉快捷设置里确认</string>
     <string name="watch_tile_add_manual">请手动添加：下拉快捷设置 → 编辑 → 找到「手表同步」拖到面板</string>

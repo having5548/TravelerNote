@@ -19,17 +19,33 @@
         </div>
         <text class="extra" style="color: {{$item.color}}" if="{{$item.extra}}">{{$item.extra}}</text>
       </div>
-      <text class="updated" if="{{ updatedText }}">{{ updatedText }}</text>
+      <!-- 多账号：底部这一行从"树脂回满"改成账号切换条（回满时刻仍然显示在树脂行右侧） -->
+      <div class="acct row" if="{{ showSwitcher }}">
+        <text class="acctNav" onclick="prevAccount">‹</text>
+        <text class="acctName" onclick="nextAccount">{{ accountText }}</text>
+        <text class="acctNav" onclick="nextAccount">›</text>
+      </div>
+      <text class="updated" else>{{ updatedText }}</text>
     </div>
 
-    <div class="empty" else>
+    <div class="empty column" else>
       <text class="hint">{{ emptyText }}</text>
-      <text class="hint-sub">在手机 App「设置 → 手表同步」里发送</text>
+      <text class="hint-sub" if="{{ !showSwitcher }}">在手机 App「设置 → 手表同步」里发送</text>
+      <div class="acct row" if="{{ showSwitcher }}">
+        <text class="acctNav" onclick="prevAccount">‹</text>
+        <text class="acctName" onclick="nextAccount">{{ accountText }}</text>
+        <text class="acctNav" onclick="nextAccount">›</text>
+      </div>
     </div>
 
     <div class="about" if="{{ showAbout }}" onclick="toggleAbout">
       <div class="about-card column">
         <text class="about-title">旅行便签 · 手表端</text>
+        <div class="about-acct column" if="{{ showSwitcher }}">
+          <text class="about-acct-title">账号（共 {{ accountCount }} 个，点按切换）</text>
+          <text class="about-acct-item" for="{{ accountRows }}" tid="id" onclick="pickAccount($item.pos)"
+                style="color: {{ $item.current ? '#3D7BFF' : '#BDBDBD' }}">{{ $item.text }}</text>
+        </div>
         <text class="about-line">GitHub: having5548</text>
         <text class="about-line">版本 {{ versionName }}</text>
         <text class="about-line">构建 {{ buildTime }}</text>
@@ -139,6 +155,26 @@
   padding: 4px 0px 12px;
 }
 
+/* 多账号切换条：复用底部那行，不额外占纵向空间 */
+.acct {
+  align-items: center;
+  justify-content: center;
+  padding: 0px 0px 8px;
+}
+
+.acctNav {
+  color: #8a8a8a;
+  font-size: 26px;
+  padding: 0px 20px;
+}
+
+.acctName {
+  color: #bdbdbd;
+  font-size: 21px;
+  width: 240px;
+  text-align: center;
+}
+
 .empty {
   margin-top: 16px;
   padding: 28px;
@@ -187,6 +223,24 @@
   margin-bottom: 14px;
 }
 
+.about-acct {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.about-acct-title {
+  color: #8a8a8a;
+  font-size: 19px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.about-acct-item {
+  font-size: 22px;
+  text-align: center;
+  padding: 5px 0px;
+}
+
 .about-line {
   color: #bdbdbd;
   font-size: 22px;
@@ -221,6 +275,10 @@ const C = {
 // 树脂每点恢复耗时（秒），与手机端 rec 口径一致
 const RESIN_UNIT_SECONDS = 480;
 const CACHE_URI = "internal://files/note_cache.json";
+// 选中的账号单独存一个文件，和数据缓存分开（数据缓存整包覆盖，选择要独立保留）
+const SEL_URI = "internal://files/note_sel.json";
+// 与手机端 WatchNoteSync.MAX_WATCH_ACCOUNTS 对齐
+const MAX_ACCOUNTS = 5;
 
 export default {
   private: {
@@ -232,7 +290,15 @@ export default {
     emptyText: "等待手机同步…",
     showAbout: false,
     versionName: versionName,
-    buildTime: buildTime
+    buildTime: buildTime,
+    // ---- 多账号（最多 5 个，与手机端同步） ----
+    accounts: [],
+    accountRows: [],
+    accountCount: 0,
+    accountText: "",
+    showSwitcher: false,
+    selIndex: 0,
+    selId: ""
   },
 
   onReady() {
@@ -240,6 +306,16 @@ export default {
     this.wasFull = false;
     this.timer = null;
     this.liveData = false;
+    this.payload = null;
+    this.accounts = [];
+    this.accountRows = [];
+    this.accountCount = 0;
+    this.accountText = "";
+    this.showSwitcher = false;
+    this.selIndex = 0;
+    this.selId = "";
+    // 用户是否手动切过账号（手动切过就不再被"上次保存的选择"校正覆盖）
+    this.userPicked = false;
 
     this.conn = interconnect.instance();
     this.conn.onopen = () => {
@@ -270,8 +346,8 @@ export default {
       },
       fail: () => {}
     });
-    // 启动时若无实时数据，先展示上次同步的缓存
-    this.loadCache();
+    // 启动时若无实时数据，先展示上次同步的缓存（先恢复上次选中的账号）
+    this.loadSelection();
   },
 
   setOnline() {
@@ -304,57 +380,158 @@ export default {
     }
   },
 
-  // ---------------- 数据渲染 ----------------
+  // ---------------- 数据渲染（多账号） ----------------
 
+  /**
+   * 兼容两种载荷：
+   * - v3：`accounts` 数组（最多 5 个，来自手机端多账号）
+   * - v2：整条消息就是一个账号（老手机端）
+   * 选中账号优先级：当前选中 → 上次保存的 → 手机端当前账号 → 第一个。
+   * 注意：选择文件是异步读的，可能晚于手机推送到达，所以读完还会再校正一次
+   * （见 [applySavedSelection]）。
+   */
   renderNote(msg) {
-    this.rawMsg = msg;
+    this.payload = msg;
     this.liveData = true;
+
+    let list = [];
+    if (msg.accounts && msg.accounts.length) {
+      list = msg.accounts.slice(0, MAX_ACCOUNTS);
+    } else {
+      list = [msg];
+    }
+    this.accounts = list;
+    this.accountCount = list.length;
+    this.showSwitcher = list.length > 1;
+
+    const byId = (id) => {
+      if (!id) return -1;
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].id === id) return i;
+      }
+      return -1;
+    };
+    const keep = this.selId || (list[this.selIndex] ? list[this.selIndex].id : "");
+    let idx = byId(keep);
+    if (idx < 0) idx = byId(msg.active);
+    if (idx < 0) idx = 0;
+    this.selIndex = idx;
+
+    this.applyAccount();
+    this.startLiveTimer();
+  },
+
+  /** 把当前选中账号的数据铺到卡片上（切换账号也走这里）。 */
+  applyAccount() {
+    const m = this.accounts[this.selIndex] || {};
+    // 本地树脂推算与离线判断都基于"当前选中的账号"
+    this.rawMsg = m;
     const list = [];
-    if (msg.resin) {
+    if (m.resin) {
       list.push({
         key: "resin",
         icon: "resin",
         color: C.resin,
         label: "原粹树脂",
-        value: msg.resin.cur + " / " + msg.resin.max,
+        value: m.resin.cur + " / " + m.resin.max,
         extra: ""
       });
     }
-    if (msg.coin) {
+    if (m.coin) {
       list.push({
         key: "coin",
         icon: "home_coin",
         color: C.coin,
         label: "洞天宝钱",
-        value: msg.coin.cur + " / " + msg.coin.max,
+        value: m.coin.cur + " / " + m.coin.max,
         extra: ""
       });
     }
-    if (msg.task) {
+    if (m.task) {
       list.push({
         key: "task",
         icon: "task",
         color: C.task,
         label: "每日委托",
-        value: msg.task.cur + " / " + msg.task.total,
-        extra: msg.task.cur >= msg.task.total && msg.task.total > 0 ? "已完成" : ""
+        value: m.task.cur + " / " + m.task.total,
+        extra: m.task.cur >= m.task.total && m.task.total > 0 ? "已完成" : ""
       });
     }
-    if (msg.sign) {
+    if (m.sign) {
       list.push({
         key: "sign",
         icon: "sign",
         color: C.sign,
         label: "本月签到",
-        value: msg.sign.days + " 天",
-        extra: msg.sign.today ? "今日已签" : "今日未签"
+        value: m.sign.days + " 天",
+        extra: m.sign.today ? "今日已签" : "今日未签"
       });
     }
     this.metrics = list;
     this.hasNote = list.length > 0;
-    this.emptyText = msg.noteError || "暂无便签数据";
+    this.emptyText = m.error || (this.payload && this.payload.noteError) || "暂无便签数据";
+    this.selId = m.id || "";
+    this.accountText = (m.label || "账号") + " " + (this.selIndex + 1) + "/" + this.accountCount;
+    this.rebuildRows();
     this.refreshLiveResin();
-    this.startLiveTimer();
+  },
+
+  /** ⋯ 浮层里的账号名册（当前账号高亮，点按切换）。 */
+  rebuildRows() {
+    const rows = [];
+    for (let i = 0; i < this.accounts.length; i++) {
+      const a = this.accounts[i] || {};
+      rows.push({
+        id: a.id || "i" + i,
+        text: (a.label || "账号 " + (i + 1)) + (a.error ? "（" + a.error + "）" : ""),
+        pos: i,
+        current: i === this.selIndex
+      });
+    }
+    this.accountRows = rows;
+  },
+
+  // ---------------- 账号切换 ----------------
+
+  nextAccount() {
+    this.switchTo(this.selIndex + 1);
+  },
+
+  prevAccount() {
+    this.switchTo(this.selIndex - 1);
+  },
+
+  pickAccount(pos) {
+    this.switchTo(pos);
+    if (this.showAbout) this.showAbout = false;
+  },
+
+  /** 环形切换；选中结果立刻落盘，重启或重新同步后仍停在同一个账号。 */
+  switchTo(pos) {
+    const n = this.accounts.length;
+    if (n <= 1) return;
+    const idx = ((pos % n) + n) % n;
+    if (idx === this.selIndex) return;
+    this.userPicked = true;
+    this.selIndex = idx;
+    this.saveSelection(this.accounts[idx].id);
+    this.applyAccount();
+    prompt.showToast({ message: this.accountText });
+  },
+
+  /**
+   * 选择文件读完后校正一次：若当前显示的不是上次保存的账号（例如手机推送先于文件读完到达），
+   * 就切回去。用户已经手动切过（userPicked）则不干预。
+   */
+  applySavedSelection() {
+    if (!this.selId || this.userPicked || this.accounts.length <= 1) return;
+    for (let i = 0; i < this.accounts.length; i++) {
+      if (this.accounts[i].id === this.selId && i !== this.selIndex) {
+        this.selIndex = i;
+        this.applyAccount();
+        return;
+      }
+    }
   },
 
   /**
@@ -453,6 +630,41 @@ export default {
         fail: () => {}
       });
     } catch (e) {}
+  },
+
+  /** 选中的账号 id 单独落盘（数据缓存整包覆盖，选择要独立保留）。 */
+  saveSelection(id) {
+    if (!id) return;
+    try {
+      file.writeText({
+        uri: SEL_URI,
+        text: JSON.stringify({ id: id }),
+        success: () => {},
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+
+  /** 先恢复上次选中的账号，再读数据缓存，保证缓存渲染出来的就是那个账号。 */
+  loadSelection() {
+    try {
+      file.readText({
+        uri: SEL_URI,
+        success: (data) => {
+          if (data && data.text) {
+            try {
+              const s = JSON.parse(data.text);
+              if (s && s.id) this.selId = s.id;
+            } catch (e) {}
+          }
+          this.applySavedSelection();
+          this.loadCache();
+        },
+        fail: () => this.loadCache()
+      });
+    } catch (e) {
+      this.loadCache();
+    }
   },
 
   // ---------------- 手机请求 ----------------
