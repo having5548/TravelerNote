@@ -105,7 +105,7 @@
     <string name="settings_github">GitHub</string>
     <string name="github_handle">having5548</string>
     <string name="settings_version">版本</string>
-    <string name="version_name">1.1.7</string>
+    <string name="version_name">1.1.8</string>
     <string name="disclaimer_title">免责声明</string>
 
     <string name="onboarding_title">使用前请仔细阅读</string>
@@ -229,4 +229,58 @@
 
     <string name="webview_open_browser">用浏览器打开</string>
     <string name="tools_record_risk">账号存在风险（5003），暂无战绩数据。可稍后重试，或先用下面的网页入口查看；本应用已按官方流程注册设备指纹，若持续出现请隔一段时间再试。</string>
+
+    <string name="settings_watch">手表同步</string>
+    <string name="watch_title">手表同步</string>
+    <string name="watch_desc">连接状态、保活与便签推送（REDMI Watch 5 等小米手表）</string>
+
+    <!-- 手表同步二级页 -->
+    <string name="watch_status_connected_fmt">已连接：%1$s</string>
+    <string name="watch_status_disconnected">未连接手表</string>
+    <string name="watch_status_connecting">正在查询…</string>
+    <string name="watch_status_checking">正在检查手表端应用…</string>
+    <string name="watch_battery_fmt">电量 %1$d%%</string>
+    <string name="watch_installed_yes">手表端应用：已安装</string>
+    <string name="watch_installed_no">手表端应用：未安装（需先用 AstroBox 安装 rpk）</string>
+    <string name="watch_installed_unknown">手表端应用：未检测</string>
+    <string name="watch_last_check_fmt">上次检查 %1$s</string>
+    <string name="watch_sending">正在获取便签数据并发送…</string>
+    <string name="watch_send">发送便签到手表</string>
+    <string name="watch_section_app">手表应用信息</string>
+    <string name="watch_section_sync">数据同步</string>
+    <string name="watch_section_keepalive">保活方式</string>
+    <string name="watch_section_interval">状态自动刷新</string>
+    <string name="watch_app_version">快应用版本</string>
+    <string name="watch_app_build">构建时间</string>
+    <string name="watch_app_storage">存储占用</string>
+    <string name="watch_unknown">未知</string>
+    <string name="watch_refresh_info">刷新手表信息</string>
+    <string name="watch_storage_fmt">%1$d KB</string>
+    <string name="watch_sync_toggle">启用手表数据同步</string>
+    <string name="watch_sync_toggle_desc">开启后运行保活服务，手表打开应用会自动拉取最新便签</string>
+    <string name="watch_mode_tile">磁贴（无感）</string>
+    <string name="watch_mode_notify">常驻通知</string>
+    <string name="watch_mode_shizuku">Shizuku 守护</string>
+    <string name="watch_mode_tile_desc">下拉快捷栏「手表同步」磁贴开关；静默保活，不发声、不常驻提醒</string>
+    <string name="watch_mode_notify_desc">常驻通知栏显示连接状态，保活更稳，但会占一条通知</string>
+    <string name="watch_mode_shizuku_desc">需 Shizuku：静默保活，服务被杀后由看门狗以 shell 权限自动拉起</string>
+    <string name="watch_mode_shizuku_missing">未检测到 Shizuku（未安装或服务未运行），已回退磁贴模式</string>
+    <string name="watch_mode_shizuku_wait">等待 Shizuku 授权…</string>
+    <string name="watch_notif_permission_needed">没有通知权限时，常驻通知/静默保活通知可能无法显示，保活稳定性会下降。</string>
+    <string name="watch_interval_1">1分钟</string>
+    <string name="watch_interval_2">2分钟</string>
+    <string name="watch_interval_5">5分钟</string>
+    <string name="watch_interval_10">10分钟</string>
+    <string name="watch_interval_30">30分钟</string>
+    <string name="watch_interval_60">1小时</string>
+    <string name="watch_interval_desc">保活运行期间按此间隔自动刷新手表连接状态</string>
+    <string name="watch_footnote">配对要求：手表端快应用与手机端包名、签名一致（本项目已内置）。手表需通过小米运动健康保持蓝牙连接。</string>
+
+    <!-- 保活服务/磁贴 -->
+    <string name="watch_service_title">手表同步</string>
+    <string name="watch_service_running">保活运行中，等待手表连接</string>
+    <string name="watch_service_connected_fmt">已连接：%1$s</string>
+    <string name="watch_service_disconnected">未连接手表</string>
+    <string name="watch_tile_on">保活运行中</string>
+    <string name="watch_tile_off">已停止</string>
 </resources>

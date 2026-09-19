@@ -28,3 +28,12 @@
 -allowaccessmodification
 -mergeinterfacesaggressively
 -overloadaggressively
+
+# 小米穿戴互联 SDK（xms-wearable AAR 自带 consumer rules，这里显式保留以防意外裁剪）
+-keep class com.xiaomi.xms.wearable.** { *; }
+-keep class com.xiaomi.xms.wearable.**$* { *; }
+
+# Shizuku 用户服务：通过 ComponentName 按名绑定，R8 不能改名
+-keep class com.traveler.miyou.watch.ShellUserService { *; }
+-keep class com.traveler.miyou.watch.IShellService { *; }
+-keep class com.traveler.miyou.watch.IShellService$* { *; }

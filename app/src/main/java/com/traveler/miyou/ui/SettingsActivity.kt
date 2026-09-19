@@ -54,6 +54,7 @@ class SettingsActivity : AppCompatActivity() {
         buildThemeRow()
         setupBackground()
         setupBackgroundEffect()
+        setupWatchSync()
         // 有背景图时给工具栏加渐变遮罩，否则返回箭头/标题看不清
         ThemeHelper.applyToolbarScrim(this)
         // 设置页也应用同一份背景与材质，避免只有主界面"全屏"、进来就断掉
@@ -229,6 +230,15 @@ class SettingsActivity : AppCompatActivity() {
     private fun updateEffectVisibility() {
         binding.frostSlider.visibility = if (settings.bgEffect == 1) View.VISIBLE else View.GONE
         binding.acrylicSlider.visibility = if (settings.bgEffect == 2) View.VISIBLE else View.GONE
+    }
+
+    // ---------------- 手表同步 ----------------
+
+    /** 设置页只保留入口，具体配置与状态在手表同步二级页（WatchSyncActivity）。 */
+    private fun setupWatchSync() {
+        binding.watchEntryRow.setOnClickListener {
+            startActivity(Intent(this, WatchSyncActivity::class.java))
+        }
     }
 
     private fun updateCaptchaFieldsVisibility() {

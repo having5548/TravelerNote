@@ -62,4 +62,21 @@ class SettingsStore(context: Context) {
     var charSource: Int
         get() = sp.getInt("char_source", 0)
         set(value) = sp.edit().putInt("char_source", value).apply()
+
+    // ---------------- 手表同步 ----------------
+
+    /** 是否启用手表数据同步：总开关，控制保活服务与手表 requestNote 自动回发。 */
+    var watchSyncEnabled: Boolean
+        get() = sp.getBoolean("watch_sync_enabled", false)
+        set(value) = sp.edit().putBoolean("watch_sync_enabled", value).apply()
+
+    /** 保活方式：0=快捷磁贴（静默无感） 1=常驻通知 2=Shizuku 守护重启。 */
+    var watchKeepAliveMode: Int
+        get() = sp.getInt("watch_keep_alive_mode", 0)
+        set(value) = sp.edit().putInt("watch_keep_alive_mode", value).apply()
+
+    /** 手表连接状态自动刷新间隔（分钟）。 */
+    var watchRefreshMinutes: Int
+        get() = sp.getInt("watch_refresh_minutes", 5)
+        set(value) = sp.edit().putInt("watch_refresh_minutes", value).apply()
 }

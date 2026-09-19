@@ -1,0 +1,15 @@
+{
+  "name": "traveler-note-watch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "旅行者便签手表接收端（REDMI Watch 5 / Vela JS 快应用）",
+  "scripts": {
+    "start": "aiot server --watch",
+    "build": "node scripts/prebuild.js && aiot build",
+    "release": "node scripts/prebuild.js && aiot release"
+  },
+  "devDependencies": {
+    "@aiot-toolkit/velasim": "^0.1.23",
+    "aiot-toolkit": "^2.0.5"
+  }
+}

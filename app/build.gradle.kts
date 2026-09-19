@@ -23,8 +23,8 @@ android {
         applicationId = "com.traveler.miyou"
         minSdk = 30
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.1.7"
+        versionCode = 10
+        versionName = "1.1.8"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -69,6 +69,8 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // Shizuku 用户服务需要 AIDL 生成 Stub（AGP 8 默认关闭）
+        aidl = true
     }
 
     packaging {
@@ -79,6 +81,8 @@ android {
 }
 
 dependencies {
+    // 小米穿戴互联 SDK（手机侧）：AAR 来自官方 interconnect 开发测试 demo（libs/xms-wearable-lib）
+    implementation(fileTree("libs") { include("*.jar", "*.aar") })
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.2")
@@ -87,6 +91,9 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.google.zxing:core:3.5.3")
+    // Shizuku：看门狗以 shell 权限拉起保活服务
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
 
 /**

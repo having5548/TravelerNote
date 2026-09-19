@@ -1,6 +1,34 @@
 # 更新日志
 
-## v1.1.7 · versionCode 9（当前版本）
+## v1.1.8 · versionCode 10（当前版本）
+
+### 一、手表同步（新增大功能：手机 ⇄ REDMI Watch 5）
+
+- **手表端快应用「旅行便签」**（本仓库 `watchapp/`，Vela JS / AIoT-toolkit 2.0 构建）：
+  - 通过小米穿戴互联（`@system.interconnect`）接收手机端推送，显示**原粹树脂（含回满时刻）/ 洞天宝钱 / 每日委托 / 本月签到天数**，
+    视觉与手机端实时便签一致（同一套图标矢量、同一套强调色：树脂蓝 / 宝钱金 / 委托绿 / 签到紫）
+  - 图标与手机端桌面图标同源（取 `mipmap-xxxhdpi` 192×192）；右上角 ⋯ 打开关于浮层：作者 GitHub、rpk 版本、构建时间
+    （构建时间由 `scripts/prebuild.js` 每次打包自动注入）
+  - **本地缓存 + 离线回退**：每次同步成功自动落盘；启动或使用中连不上手机时，自动用缓存数据展示（状态栏黄色「离线 · 显示缓存数据」）
+  - **树脂本地推算**：按每 480 秒回 1 点每分钟重算当前值与「回满 HH:mm」，断连也持续走准；回满瞬间弹「原粹树脂已回满」提示
+  - 极致轻量：事件驱动**无轮询**、无定时器常驻（仅展示数据时每分钟一次本地计算）、rpk 约 86KB
+- **手机端新增「手表同步」二级页**（设置 → 手表同步）：
+  - 连接状态（设备名 / 电量 / 手表端应用是否安装 / 上次检查时间）、手表应用信息（版本 / 构建时间 / 存储占用，由手表端回报）
+  - 「发送便签到手表」手动推送；数据同步总开关
+  - **保活方式三选一**：① 快捷设置磁贴（无感静默前台服务）② 常驻通知（显示连接状态）③ **Shizuku 守护**（看门狗闹钟 + shell 权限 `am start-foreground-service` 拉起，绕过后台启动限制）
+  - **状态自动刷新间隔**：1 / 2 / 5 / 10 / 30 分钟 / 1 小时，服务按所选间隔刷新连接状态
+- **互联协议（结构化 JSON v2）**：`dailyNote{date, ts, resin{cur,max,rec}, coin, task, sign{today,days}}`；
+  手表回 `storageInfo{versionName, buildTime, usedKb}`；手表可发 `requestNote` 主动拉取，手机端自动回发（应用进程存活期间）
+- **配对硬约束（官方 interconnect 要求）**：手表快应用包名 = 安卓包名（`com.traveler.miyou`），且 rpk 用同一套签名
+  （`release.keystore` 导出 pem，见 `watchapp/sign/`，已 gitignore）
+- 手机端集成官方 **xms-wearable SDK**（`app/libs/xms-wearable-lib_1.4_release.aar`），首次发送自动申请 `DEVICE_MANAGER` 权限
+- 签到数据全程**只读**：手表链路仅查询展示，绝不触发签到
+
+### 二、发布约定
+
+- 手表端 rpk 构建产物复制到 `watchapp/dist/`；版本号与手机端保持一致（1.1.8）
+
+## v1.1.7 · versionCode 9
 
 ### 一、我的角色数据修正
 

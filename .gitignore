@@ -14,3 +14,10 @@ captures/
 *.jks
 *.apk
 keystore.properties
+
+# 手表端快应用：构建产物、依赖与签名私钥不入库
+watchapp/node_modules/
+watchapp/dist/
+watchapp/sign/
+.temp_watchapp/
+watchapp/build/

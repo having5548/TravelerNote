@@ -1,0 +1,521 @@
+<template>
+  <div class="page column">
+    <div class="top row">
+      <div class="statusWrap row">
+        <div class="dot" style="background-color: {{statusColor}}"></div>
+        <text class="status">{{ statusText }}</text>
+      </div>
+      <text class="dots" onclick="toggleAbout">⋯</text>
+    </div>
+
+    <div class="card column" if="{{ hasNote }}">
+      <div class="row item" for="{{ metrics }}" tid="key">
+        <div class="iconBg" style="background-color: {{$item.color}}">
+          <image class="iconImg" src="/common/icons/{{$item.icon}}.png" />
+        </div>
+        <div class="mid column">
+          <text class="label">{{$item.label}}</text>
+          <text class="value">{{$item.value}}</text>
+        </div>
+        <text class="extra" style="color: {{$item.color}}" if="{{$item.extra}}">{{$item.extra}}</text>
+      </div>
+      <text class="updated" if="{{ updatedText }}">{{ updatedText }}</text>
+    </div>
+
+    <div class="empty" else>
+      <text class="hint">{{ emptyText }}</text>
+      <text class="hint-sub">在手机 App「设置 → 手表同步」里发送</text>
+    </div>
+
+    <div class="about" if="{{ showAbout }}" onclick="toggleAbout">
+      <div class="about-card column">
+        <text class="about-title">旅行便签 · 手表端</text>
+        <text class="about-line">GitHub: having5548</text>
+        <text class="about-line">版本 {{ versionName }}</text>
+        <text class="about-line">构建 {{ buildTime }}</text>
+        <text class="about-close">点击任意处关闭</text>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style>
+.page {
+  flex-direction: column;
+  width: 432px;
+  height: 514px;
+  padding: 30px 26px 24px;
+  background-color: #0d0d0d;
+}
+
+.column {
+  flex-direction: column;
+}
+
+.row {
+  flex-direction: row;
+}
+
+.top {
+  align-items: center;
+  justify-content: space-between;
+  padding: 0px 6px;
+}
+
+.statusWrap {
+  align-items: center;
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  margin-right: 10px;
+}
+
+.status {
+  color: #9e9e9e;
+  font-size: 22px;
+}
+
+.dots {
+  color: #ffffff;
+  font-size: 34px;
+  padding: 0px 10px;
+}
+
+.card {
+  margin-top: 16px;
+  padding: 8px 22px;
+  background-color: #1c1c1e;
+  border-radius: 28px;
+  flex: 1;
+}
+
+.item {
+  align-items: center;
+  padding: 17px 0px;
+}
+
+.iconBg {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconImg {
+  width: 30px;
+  height: 30px;
+}
+
+.mid {
+  flex: 1;
+  margin-left: 18px;
+}
+
+.label {
+  color: #9e9e9e;
+  font-size: 21px;
+}
+
+.value {
+  color: #ffffff;
+  font-size: 29px;
+  margin-top: 4px;
+  font-weight: bold;
+}
+
+.extra {
+  font-size: 20px;
+  margin-left: 8px;
+}
+
+.updated {
+  color: #616161;
+  font-size: 18px;
+  text-align: center;
+  padding: 4px 0px 12px;
+}
+
+.empty {
+  margin-top: 16px;
+  padding: 28px;
+  background-color: #1c1c1e;
+  border-radius: 28px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+.hint {
+  color: #ffffff;
+  font-size: 26px;
+  text-align: center;
+}
+
+.hint-sub {
+  color: #8a8a8a;
+  font-size: 20px;
+  margin-top: 12px;
+  text-align: center;
+}
+
+.about {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 432px;
+  height: 514px;
+  background-color: rgba(0, 0, 0, 0.72);
+  align-items: center;
+  justify-content: center;
+}
+
+.about-card {
+  width: 340px;
+  padding: 32px 28px;
+  background-color: #1c1c1e;
+  border-radius: 28px;
+  align-items: center;
+}
+
+.about-title {
+  color: #ffffff;
+  font-size: 26px;
+  margin-bottom: 14px;
+}
+
+.about-line {
+  color: #bdbdbd;
+  font-size: 22px;
+  margin-top: 8px;
+}
+
+.about-close {
+  color: #616161;
+  font-size: 18px;
+  margin-top: 18px;
+}
+</style>
+
+<script>
+import interconnect from "@system.interconnect";
+import file from "@system.file";
+import prompt from "@system.prompt";
+import { versionName, buildTime } from "../../common/buildinfo";
+
+// 与手机端实时便签同一套强调色（values/colors.xml）
+const C = {
+  resin: "#3D7BFF",
+  coin: "#E8A23A",
+  task: "#22A06B",
+  sign: "#8B5CF6",
+  online: "#22A06B",
+  offline: "#E8A23A",
+  error: "#EF4444",
+  idle: "#9E9E9E"
+};
+
+// 树脂每点恢复耗时（秒），与手机端 rec 口径一致
+const RESIN_UNIT_SECONDS = 480;
+const CACHE_URI = "internal://files/note_cache.json";
+
+export default {
+  private: {
+    statusText: "连接中…",
+    statusColor: C.idle,
+    hasNote: false,
+    metrics: [],
+    updatedText: "",
+    emptyText: "等待手机同步…",
+    showAbout: false,
+    versionName: versionName,
+    buildTime: buildTime
+  },
+
+  onReady() {
+    this.rawMsg = null;
+    this.wasFull = false;
+    this.timer = null;
+    this.liveData = false;
+
+    this.conn = interconnect.instance();
+    this.conn.onopen = () => {
+      if (this.$valid) {
+        this.setOnline();
+        this.requestNote();
+      }
+    };
+    this.conn.onmessage = (res) => {
+      if (this.$valid) this.handleMessage(res.data);
+    };
+    this.conn.onerror = () => {
+      if (this.$valid) this.goOffline("连接错误");
+    };
+    this.conn.onclose = () => {
+      if (this.$valid) this.goOffline("未连接手机");
+    };
+    // 无轮询：仅启动时查一次状态，之后全部事件驱动（省 CPU / 省电）
+    this.conn.getReadyState({
+      success: (res) => {
+        if (!this.$valid) return;
+        if (res.status === 1) {
+          this.setOnline();
+          this.requestNote();
+        } else {
+          this.goOffline("未连接手机");
+        }
+      },
+      fail: () => {}
+    });
+    // 启动时若无实时数据，先展示上次同步的缓存
+    this.loadCache();
+  },
+
+  setOnline() {
+    this.statusColor = C.online;
+    if (!this.liveData) this.statusText = "已连接手机";
+  },
+
+  /** 连接失败：有缓存就回退展示缓存数据，并启动本地推算。 */
+  goOffline(text) {
+    this.statusColor = this.rawMsg ? C.offline : C.error;
+    this.statusText = this.rawMsg ? "离线 · 显示缓存数据" : text;
+    this.startLiveTimer();
+  },
+
+  handleMessage(raw) {
+    let msg = null;
+    try {
+      msg = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
+    if (!msg) return;
+    if (msg.type === "dailyNote") {
+      this.statusColor = C.online;
+      this.statusText = "已同步 · " + (msg.date || "");
+      this.saveCache(msg);
+      this.renderNote(msg);
+    } else if (msg.action === "getStorageInfo") {
+      this.replyStorage();
+    }
+  },
+
+  // ---------------- 数据渲染 ----------------
+
+  renderNote(msg) {
+    this.rawMsg = msg;
+    this.liveData = true;
+    const list = [];
+    if (msg.resin) {
+      list.push({
+        key: "resin",
+        icon: "resin",
+        color: C.resin,
+        label: "原粹树脂",
+        value: msg.resin.cur + " / " + msg.resin.max,
+        extra: ""
+      });
+    }
+    if (msg.coin) {
+      list.push({
+        key: "coin",
+        icon: "home_coin",
+        color: C.coin,
+        label: "洞天宝钱",
+        value: msg.coin.cur + " / " + msg.coin.max,
+        extra: ""
+      });
+    }
+    if (msg.task) {
+      list.push({
+        key: "task",
+        icon: "task",
+        color: C.task,
+        label: "每日委托",
+        value: msg.task.cur + " / " + msg.task.total,
+        extra: msg.task.cur >= msg.task.total && msg.task.total > 0 ? "已完成" : ""
+      });
+    }
+    if (msg.sign) {
+      list.push({
+        key: "sign",
+        icon: "sign",
+        color: C.sign,
+        label: "本月签到",
+        value: msg.sign.days + " 天",
+        extra: msg.sign.today ? "今日已签" : "今日未签"
+      });
+    }
+    this.metrics = list;
+    this.hasNote = list.length > 0;
+    this.emptyText = msg.noteError || "暂无便签数据";
+    this.refreshLiveResin();
+    this.startLiveTimer();
+  },
+
+  /**
+   * 按当前时间推算树脂进度与回满时刻（本地推算，断连也准确）：
+   * 树脂每 RESIN_UNIT_SECONDS 秒回 1 点；回满时刻 = 手机取数时刻 ts + 剩余秒 rec。
+   */
+  refreshLiveResin() {
+    const m = this.rawMsg;
+    if (!m || !m.resin) {
+      this.updatedText = "";
+      return;
+    }
+    const now = Date.now();
+    const elapsed = Math.max(0, Math.floor((now - (m.ts || now)) / 1000));
+    const cur = Math.min(m.resin.max, m.resin.cur + Math.floor(elapsed / RESIN_UNIT_SECONDS));
+    const full = cur >= m.resin.max;
+
+    if (this.hasNote) {
+      const rows = [];
+      this.metrics.forEach((row) => {
+        if (row.key === "resin") {
+          rows.push(Object.assign({}, row, { value: cur + " / " + m.resin.max }));
+        } else {
+          rows.push(row);
+        }
+      });
+      this.metrics = rows;
+    }
+
+    if (full) {
+      const resinRow = this.metrics.filter((r) => r.key === "resin")[0];
+      if (resinRow) {
+        const rows = this.metrics.map((r) =>
+          r.key === "resin" ? Object.assign({}, r, { extra: "已回满" }) : r
+        );
+        this.metrics = rows;
+      }
+      this.updatedText = "树脂已回满";
+      if (!this.wasFull) {
+        this.wasFull = true;
+        prompt.showToast({ message: "原粹树脂已回满" });
+      }
+    } else {
+      this.wasFull = false;
+      const t = new Date((m.ts || now) + m.resin.rec * 1000);
+      const pad = (n) => (n < 10 ? "0" + n : "" + n);
+      const hhmm = pad(t.getHours()) + ":" + pad(t.getMinutes());
+      if (this.hasNote) {
+        const rows = this.metrics.map((r) =>
+          r.key === "resin" ? Object.assign({}, r, { extra: "回满 " + hhmm }) : r
+        );
+        this.metrics = rows;
+      }
+      this.updatedText = "树脂回满 " + hhmm;
+    }
+  },
+
+  /** 每分钟本地重算一次（仅在展示数据时运行；轻量，无网络请求）。 */
+  startLiveTimer() {
+    if (this.timer || !this.rawMsg) return;
+    this.timer = setInterval(() => {
+      if (this.$valid) this.refreshLiveResin();
+    }, 60 * 1000);
+  },
+
+  // ---------------- 本地缓存 ----------------
+
+  saveCache(msg) {
+    try {
+      file.writeText({
+        uri: CACHE_URI,
+        text: JSON.stringify(msg),
+        success: () => {},
+        fail: (err, code) => {
+          console.log("saveCache fail: " + code);
+        }
+      });
+    } catch (e) {}
+  },
+
+  loadCache() {
+    try {
+      file.readText({
+        uri: CACHE_URI,
+        success: (data) => {
+          if (!this.$valid || this.liveData || !data || !data.text) return;
+          try {
+            const msg = JSON.parse(data.text);
+            if (msg && msg.type === "dailyNote") {
+              this.statusColor = C.offline;
+              this.statusText = "离线 · 显示缓存数据";
+              this.renderNote(msg);
+            }
+          } catch (e) {}
+        },
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+
+  // ---------------- 手机请求 ----------------
+
+  requestNote() {
+    if (!this.conn) return;
+    this.conn.send({
+      data: { action: "requestNote" },
+      fail: (res) => {
+        console.log("requestNote fail: " + JSON.stringify(res));
+      }
+    });
+  },
+
+  /** 手表应用信息回报：版本 + 构建时间 + 自身文件占用（files/cache 目录递归求和）。 */
+  replyStorage() {
+    if (!this.conn) return;
+    let total = 0;
+    let pending = 2;
+    const done = () => {
+      pending -= 1;
+      if (pending === 0) {
+        this.conn.send({
+          data: {
+            type: "storageInfo",
+            versionName: this.versionName,
+            buildTime: this.buildTime,
+            usedKb: Math.round(total / 1024)
+          },
+          fail: () => {}
+        });
+      }
+    };
+    ["internal://files/", "internal://cache/"].forEach((root) => {
+      try {
+        file.get({
+          uri: root,
+          recursive: true,
+          success: (d) => {
+            try {
+              (d.subFiles || []).forEach((f) => {
+                total += f.length || 0;
+              });
+            } catch (e) {}
+            done();
+          },
+          fail: () => done()
+        });
+      } catch (e) {
+        done();
+      }
+    });
+  },
+
+  toggleAbout() {
+    this.showAbout = !this.showAbout;
+  },
+
+  onDestroy() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+};
+</script>
