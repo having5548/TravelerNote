@@ -17,7 +17,7 @@
         android:icon="@drawable/ic_tools"
         android:title="@string/tab_tools" />
     <item
-        android:id="@+id/tab_settings"
-        android:icon="@drawable/ic_settings"
-        android:title="@string/settings" />
+        android:id="@+id/tab_watch"
+        android:icon="@drawable/ic_watch"
+        android:title="@string/watch_title" />
 </menu>

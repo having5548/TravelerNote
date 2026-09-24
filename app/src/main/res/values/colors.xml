@@ -37,4 +37,30 @@
     <color name="accent_rose">#E0558B</color>
     <color name="accent_orange">#E0892E</color>
     <color name="accent_green">#2FA36B</color>
+
+    <!--
+      Material 3 色彩角色（对标 Shizuku 的 M3 风格）：
+      卡片用 colorSurfaceContainerHigh 填充；图标用 colorPrimaryContainer 圆形底 + colorOnPrimaryContainer 前景。
+    -->
+    <color name="surface_container">#F7F8FC</color>
+    <color name="surface_container_high">#EFF1F8</color>
+    <color name="on_surface">#1F2430</color>
+    <color name="on_surface_variant">#7C8698</color>
+    <color name="outline_variant">#E4E8F1</color>
+    <color name="secondary_container">#EBEEF6</color>
+    <color name="on_secondary_container">#2A3242</color>
+
+    <!-- 每个强调色各自的 primaryContainer（浅色 tint）与容器上的前景色 -->
+    <color name="primary_container_blue">#E2E7FF</color>
+    <color name="on_primary_container_blue">#2732A8</color>
+    <color name="primary_container_teal">#D3F3F0</color>
+    <color name="on_primary_container_teal">#00504C</color>
+    <color name="primary_container_purple">#EAE2FF</color>
+    <color name="on_primary_container_purple">#3A2A8C</color>
+    <color name="primary_container_rose">#FFE1EB</color>
+    <color name="on_primary_container_rose">#7A1F45</color>
+    <color name="primary_container_orange">#FFE9D3</color>
+    <color name="on_primary_container_orange">#6B3D00</color>
+    <color name="primary_container_green">#D6F2E1</color>
+    <color name="on_primary_container_green">#0B4F31</color>
 </resources>

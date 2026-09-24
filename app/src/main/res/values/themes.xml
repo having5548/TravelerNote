@@ -1,12 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.TravelerNote" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <!--
+      主题对标 Shizuku：Material 3 + 全圆角卡片（见 Widget.TravelerNote.Card）。
+      M3 的 colorPrimaryContainer / colorSurfaceContainerHigh 是"填充卡片 + 圆形图标底"的基础角色。
+    -->
+    <style name="Theme.TravelerNote" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/accent_blue</item>
-        <item name="colorPrimaryVariant">@color/primary_dark</item>
         <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container_blue</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_blue</item>
         <item name="colorSecondary">@color/accent_blue</item>
-        <item name="colorSecondaryVariant">@color/primary_dark</item>
         <item name="colorOnSecondary">@color/on_primary</item>
+        <item name="colorSecondaryContainer">@color/secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
+
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorSurfaceVariant">@color/surface_container</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_container_high</item>
+        <item name="colorOutlineVariant">@color/outline_variant</item>
+
         <item name="android:windowBackground">@color/background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
@@ -15,50 +30,78 @@
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 
+    <!-- Shizuku 风格的填充卡片：28dp 圆角、无描边、无阴影 -->
+    <style name="Widget.TravelerNote.Card" parent="Widget.Material3.CardView.Filled">
+        <item name="cardBackgroundColor">?attr/colorSurfaceContainerHigh</item>
+        <item name="cardCornerRadius">28dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="contentPadding">20dp</item>
+    </style>
+
+    <!-- 卡片里的标题 / 说明（字号与层次对齐 Shizuku） -->
+    <style name="TextAppearance.TravelerNote.CardTitle" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">?android:attr/textColorPrimary</item>
+    </style>
+
+    <style name="TextAppearance.TravelerNote.CardSummary" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+    </style>
+
+    <!-- 圆形图标底（配合 backgroundTint=?colorPrimaryContainer、tint=?colorOnPrimaryContainer） -->
+    <style name="Widget.TravelerNote.CardIcon" parent="">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:background">@drawable/shape_circle_icon_background</item>
+        <item name="android:backgroundTint">?attr/colorPrimaryContainer</item>
+        <item name="android:backgroundTintMode">src_in</item>
+        <item name="android:tint">?attr/colorOnPrimaryContainer</item>
+        <item name="android:tintMode">src_in</item>
+    </style>
+
     <style name="ThemeOverlay.TravelerNote.Blue" parent="">
         <item name="colorPrimary">@color/accent_blue</item>
-        <item name="colorPrimaryVariant">@color/accent_blue</item>
-        <item name="colorSecondary">@color/accent_blue</item>
-        <item name="colorSecondaryVariant">@color/accent_blue</item>
+        <item name="colorPrimaryContainer">@color/primary_container_blue</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_blue</item>
     </style>
 
     <style name="ThemeOverlay.TravelerNote.Teal" parent="">
         <item name="colorPrimary">@color/accent_teal</item>
-        <item name="colorPrimaryVariant">@color/accent_teal</item>
-        <item name="colorSecondary">@color/accent_teal</item>
-        <item name="colorSecondaryVariant">@color/accent_teal</item>
+        <item name="colorPrimaryContainer">@color/primary_container_teal</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_teal</item>
     </style>
 
     <style name="ThemeOverlay.TravelerNote.Purple" parent="">
         <item name="colorPrimary">@color/accent_purple</item>
-        <item name="colorPrimaryVariant">@color/accent_purple</item>
-        <item name="colorSecondary">@color/accent_purple</item>
-        <item name="colorSecondaryVariant">@color/accent_purple</item>
+        <item name="colorPrimaryContainer">@color/primary_container_purple</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_purple</item>
     </style>
 
     <style name="ThemeOverlay.TravelerNote.Rose" parent="">
         <item name="colorPrimary">@color/accent_rose</item>
-        <item name="colorPrimaryVariant">@color/accent_rose</item>
-        <item name="colorSecondary">@color/accent_rose</item>
-        <item name="colorSecondaryVariant">@color/accent_rose</item>
+        <item name="colorPrimaryContainer">@color/primary_container_rose</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_rose</item>
     </style>
 
     <style name="ThemeOverlay.TravelerNote.Orange" parent="">
         <item name="colorPrimary">@color/accent_orange</item>
-        <item name="colorPrimaryVariant">@color/accent_orange</item>
-        <item name="colorSecondary">@color/accent_orange</item>
-        <item name="colorSecondaryVariant">@color/accent_orange</item>
+        <item name="colorPrimaryContainer">@color/primary_container_orange</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_orange</item>
     </style>
 
     <style name="ThemeOverlay.TravelerNote.Green" parent="">
         <item name="colorPrimary">@color/accent_green</item>
-        <item name="colorPrimaryVariant">@color/accent_green</item>
-        <item name="colorSecondary">@color/accent_green</item>
-        <item name="colorSecondaryVariant">@color/accent_green</item>
+        <item name="colorPrimaryContainer">@color/primary_container_green</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_green</item>
     </style>
+
     <!-- 启用磨砂/亚克力时叠加：让卡片等 surface 半透明，背景效果能透出来 -->
     <style name="ThemeOverlay.TravelerNote.Glass" parent="">
         <item name="colorSurface">@color/surface_glass</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_glass</item>
         <item name="android:colorBackground">@android:color/transparent</item>
     </style>
 </resources>

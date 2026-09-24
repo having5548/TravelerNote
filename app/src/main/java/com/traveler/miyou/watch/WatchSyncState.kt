@@ -38,7 +38,12 @@ object WatchSyncState {
         /** 最近一次推送失败的原因（null 表示上次推送成功）。 */
         val noteError: String? = null,
         /** 保活服务启动失败的原因（例如被系统/ROM 拒绝后台启动）。 */
-        val startError: String? = null
+        val startError: String? = null,
+        /**
+         * 手表断连后进入"准备状态"：不再反复推数据，只等重连；
+         * 重连后自动拉起手表端应用并立刻补推一次。
+         */
+        val preparing: Boolean = false
     )
 
     private val _status = MutableStateFlow(WatchStatus())

@@ -8,11 +8,9 @@
     <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardBackgroundColor="?attr/colorSurface"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="0dp"
-        app:strokeColor="@color/divider"
-        app:strokeWidth="1dp">
+        app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -30,13 +28,24 @@
                 android:paddingTop="18dp"
                 android:paddingBottom="18dp">
 
-                <ImageView
-                    android:id="@+id/signIcon"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@string/sign_title"
-                    android:src="@drawable/ic_sign"
-                    app:tint="?attr/colorPrimary" />
+                <!-- 圆形图标底（Shizuku 风格）：容器 colorPrimaryContainer + 图标 colorOnPrimaryContainer -->
+                <FrameLayout
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/shape_circle_icon_background"
+                    android:backgroundTint="?attr/colorPrimaryContainer"
+                    android:backgroundTintMode="src_in">
+
+                    <ImageView
+                        android:id="@+id/signIcon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@string/sign_title"
+                        android:src="@drawable/ic_sign"
+                        app:tint="?attr/colorOnPrimaryContainer"
+                        app:tintMode="src_in" />
+                </FrameLayout>
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -94,12 +103,22 @@
                 android:paddingTop="14dp"
                 android:paddingBottom="14dp">
 
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_characters"
-                    app:tint="@color/expedition" />
+                <FrameLayout
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/shape_circle_icon_background"
+                    android:backgroundTint="@color/primary_container_purple"
+                    android:backgroundTintMode="src_in">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_characters"
+                        app:tint="@color/expedition"
+                        app:tintMode="src_in" />
+                </FrameLayout>
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -128,7 +147,7 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/communityBtn"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
@@ -137,7 +156,7 @@
                     android:paddingEnd="14dp"
                     android:text="@string/community_sign_action"
                     android:textSize="13sp"
-                    app:cornerRadius="12dp" />
+                    app:cornerRadius="20dp" />
             </LinearLayout>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>

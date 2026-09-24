@@ -149,7 +149,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="10dp"
                         android:text="@string/send_code"
-                        app:cornerRadius="12dp" />
+                        app:cornerRadius="20dp" />
                 </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
@@ -172,7 +172,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/manualCookieBtn"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"

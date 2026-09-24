@@ -1,8 +1,8 @@
 {
   "package": "com.traveler.miyou",
   "name": "旅行便签",
-  "versionName": "1.1.10",
-  "versionCode": 7,
+  "versionName": "1.1.12",
+  "versionCode": 9,
   "minPlatformVersion": 1200,
   "icon": "/common/logo.png",
   "deviceTypeList": [
@@ -11,7 +11,8 @@
   "features": [
     { "name": "system.interconnect" },
     { "name": "system.prompt" },
-    { "name": "system.file" }
+    { "name": "system.file" },
+    { "name": "system.router" }
   ],
   "config": {
     "logLevel": "log",
@@ -21,6 +22,9 @@
     "entry": "pages/index",
     "pages": {
       "pages/index": {
+        "component": "index"
+      },
+      "pages/settings": {
         "component": "index"
       }
     }

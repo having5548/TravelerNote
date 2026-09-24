@@ -1,11 +1,16 @@
 <template>
-  <div class="page column">
+  <div class="page column" onswipe="onSwipe">
     <div class="top row">
       <div class="statusWrap row">
         <div class="dot" style="background-color: {{statusColor}}"></div>
         <text class="status">{{ statusText }}</text>
       </div>
-      <text class="dots" onclick="toggleAbout">⋯</text>
+      <div class="actions row">
+        <!-- 刷新：立刻向手机端拉一次最新数据 -->
+        <image class="iconBtn" src="/common/icons/refresh.png" onclick="onRefreshTap" />
+        <!-- 设置：进入手表设置二级页 -->
+        <image class="iconBtn" src="/common/icons/settings.png" onclick="openSettings" />
+      </div>
     </div>
 
     <div class="card column" if="{{ hasNote }}">
@@ -19,37 +24,20 @@
         </div>
         <text class="extra" style="color: {{$item.color}}" if="{{$item.extra}}">{{$item.extra}}</text>
       </div>
-      <!-- 多账号：底部这一行从"树脂回满"改成账号切换条（回满时刻仍然显示在树脂行右侧） -->
+      <!-- 多账号：这一行只显示"当前账号 + 位置"，切换靠上下滑动 -->
       <div class="acct row" if="{{ showSwitcher }}">
-        <text class="acctNav" onclick="prevAccount">‹</text>
-        <text class="acctName" onclick="nextAccount">{{ accountText }}</text>
-        <text class="acctNav" onclick="nextAccount">›</text>
+        <image class="acctIcon" src="/common/icons/swap.png" />
+        <text class="acctName">{{ accountText }}</text>
       </div>
       <text class="updated" else>{{ updatedText }}</text>
     </div>
 
     <div class="empty column" else>
       <text class="hint">{{ emptyText }}</text>
-      <text class="hint-sub" if="{{ !showSwitcher }}">在手机 App「设置 → 手表同步」里发送</text>
+      <text class="hint-sub" if="{{ !showSwitcher }}">点右上角刷新，或等手机端连接后自动获取</text>
       <div class="acct row" if="{{ showSwitcher }}">
-        <text class="acctNav" onclick="prevAccount">‹</text>
-        <text class="acctName" onclick="nextAccount">{{ accountText }}</text>
-        <text class="acctNav" onclick="nextAccount">›</text>
-      </div>
-    </div>
-
-    <div class="about" if="{{ showAbout }}" onclick="toggleAbout">
-      <div class="about-card column">
-        <text class="about-title">旅行便签 · 手表端</text>
-        <div class="about-acct column" if="{{ showSwitcher }}">
-          <text class="about-acct-title">账号（共 {{ accountCount }} 个，点按切换）</text>
-          <text class="about-acct-item" for="{{ accountRows }}" tid="id" onclick="pickAccount($item.pos)"
-                style="color: {{ $item.current ? '#3D7BFF' : '#BDBDBD' }}">{{ $item.text }}</text>
-        </div>
-        <text class="about-line">GitHub: having5548</text>
-        <text class="about-line">版本 {{ versionName }}</text>
-        <text class="about-line">构建 {{ buildTime }}</text>
-        <text class="about-close">点击任意处关闭</text>
+        <image class="acctIcon" src="/common/icons/swap.png" />
+        <text class="acctName">{{ accountText }}</text>
       </div>
     </div>
   </div>
@@ -94,10 +82,15 @@
   font-size: 22px;
 }
 
-.dots {
-  color: #ffffff;
-  font-size: 34px;
-  padding: 0px 10px;
+/* 右上角：刷新 + 设置两个图标按钮 */
+.actions {
+  align-items: center;
+}
+
+.iconBtn {
+  width: 36px;
+  height: 36px;
+  margin-left: 14px;
 }
 
 .card {
@@ -155,23 +148,23 @@
   padding: 4px 0px 12px;
 }
 
-/* 多账号切换条：复用底部那行，不额外占纵向空间 */
+/* 多账号：只显示当前账号 + 位置，切换靠上下滑动（不额外占纵向空间） */
 .acct {
   align-items: center;
   justify-content: center;
   padding: 0px 0px 8px;
 }
 
-.acctNav {
-  color: #8a8a8a;
-  font-size: 26px;
-  padding: 0px 20px;
+.acctIcon {
+  width: 26px;
+  height: 26px;
+  margin-right: 10px;
+  opacity: 0.65;
 }
 
 .acctName {
   color: #bdbdbd;
   font-size: 21px;
-  width: 240px;
   text-align: center;
 }
 
@@ -198,66 +191,13 @@
   text-align: center;
 }
 
-.about {
-  position: absolute;
-  left: 0px;
-  top: 0px;
-  width: 432px;
-  height: 514px;
-  background-color: rgba(0, 0, 0, 0.72);
-  align-items: center;
-  justify-content: center;
-}
-
-.about-card {
-  width: 340px;
-  padding: 32px 28px;
-  background-color: #1c1c1e;
-  border-radius: 28px;
-  align-items: center;
-}
-
-.about-title {
-  color: #ffffff;
-  font-size: 26px;
-  margin-bottom: 14px;
-}
-
-.about-acct {
-  width: 100%;
-  margin-bottom: 6px;
-}
-
-.about-acct-title {
-  color: #8a8a8a;
-  font-size: 19px;
-  text-align: center;
-  margin-bottom: 4px;
-}
-
-.about-acct-item {
-  font-size: 22px;
-  text-align: center;
-  padding: 5px 0px;
-}
-
-.about-line {
-  color: #bdbdbd;
-  font-size: 22px;
-  margin-top: 8px;
-}
-
-.about-close {
-  color: #616161;
-  font-size: 18px;
-  margin-top: 18px;
-}
 </style>
 
 <script>
 import interconnect from "@system.interconnect";
 import file from "@system.file";
 import prompt from "@system.prompt";
+import router from "@system.router";
 import { versionName, buildTime } from "../../common/buildinfo";
 
 // 与手机端实时便签同一套强调色（values/colors.xml）
@@ -277,8 +217,12 @@ const RESIN_UNIT_SECONDS = 480;
 const CACHE_URI = "internal://files/note_cache.json";
 // 选中的账号单独存一个文件，和数据缓存分开（数据缓存整包覆盖，选择要独立保留）
 const SEL_URI = "internal://files/note_sel.json";
+// 手表设置里选的"默认显示用户"（不设则跟随手机当前账号）
+const DEF_URI = "internal://files/note_default.json";
 // 与手机端 WatchNoteSync.MAX_WATCH_ACCOUNTS 对齐
 const MAX_ACCOUNTS = 5;
+// 数据时效：距上次同步超过 4 小时，打开应用/重连时才自动向手机端拉一次
+const AUTO_SYNC_MS = 4 * 60 * 60 * 1000;
 
 export default {
   private: {
@@ -288,17 +232,18 @@ export default {
     metrics: [],
     updatedText: "",
     emptyText: "等待手机同步…",
-    showAbout: false,
     versionName: versionName,
     buildTime: buildTime,
-    // ---- 多账号（最多 5 个，与手机端同步） ----
+    // ---- 多账号（最多 5 个，与手机端同步；上下滑动切换） ----
     accounts: [],
-    accountRows: [],
     accountCount: 0,
     accountText: "",
     showSwitcher: false,
     selIndex: 0,
-    selId: ""
+    selId: "",
+    // 设置页选的默认显示用户：defaultId 为空表示跟随手机当前账号
+    defaultId: "",
+    defaultFollow: true
   },
 
   onReady() {
@@ -308,20 +253,25 @@ export default {
     this.liveData = false;
     this.payload = null;
     this.accounts = [];
-    this.accountRows = [];
     this.accountCount = 0;
     this.accountText = "";
     this.showSwitcher = false;
     this.selIndex = 0;
     this.selId = "";
+    this.defaultId = "";
+    this.defaultFollow = true;
     // 用户是否手动切过账号（手动切过就不再被"上次保存的选择"校正覆盖）
     this.userPicked = false;
+    // 连接状态（刷新按钮要用）与"本次打开是否已经自动拉过"
+    this.online = false;
+    this.autoRequested = false;
 
     this.conn = interconnect.instance();
     this.conn.onopen = () => {
       if (this.$valid) {
         this.setOnline();
-        this.requestNote();
+        // 重新连上手机：只在数据过期（超过 AUTO_SYNC_MS）时才自动拉一次
+        this.maybeAutoRequest();
       }
     };
     this.conn.onmessage = (res) => {
@@ -339,27 +289,91 @@ export default {
         if (!this.$valid) return;
         if (res.status === 1) {
           this.setOnline();
-          this.requestNote();
+          // 打开应用时：数据超过 AUTO_SYNC_MS 才自动向手机端拉一次
+          this.maybeAutoRequest();
         } else {
           this.goOffline("未连接手机");
         }
       },
       fail: () => {}
     });
-    // 启动时若无实时数据，先展示上次同步的缓存（先恢复上次选中的账号）
-    this.loadSelection();
+    // 启动时若无实时数据，先展示上次同步的缓存（先恢复默认账号/上次选中的账号）
+    this.loadPrefs();
+  },
+
+  /** 从设置页返回时，可能改过"默认显示用户"：重读并按需切换。 */
+  onShow() {
+    this.refreshDefaultId();
   },
 
   setOnline() {
+    this.online = true;
     this.statusColor = C.online;
     if (!this.liveData) this.statusText = "已连接手机";
   },
 
   /** 连接失败：有缓存就回退展示缓存数据，并启动本地推算。 */
   goOffline(text) {
+    this.online = false;
     this.statusColor = this.rawMsg ? C.offline : C.error;
     this.statusText = this.rawMsg ? "离线 · 显示缓存数据" : text;
     this.startLiveTimer();
+  },
+
+  /**
+   * 数据时效规则：距上次成功同步超过 4 小时才自动向手机端要一次
+   * （打开应用、以及重新连上手机时各判断一次；手动刷新不受限制）。
+   */
+  maybeAutoRequest() {
+    if (this.autoRequested || !this.online) return;
+    const last = (this.payload && this.payload.ts) || 0;
+    if (!last || Date.now() - last > AUTO_SYNC_MS) {
+      this.autoRequested = true;
+      this.requestNote();
+    }
+  },
+
+  /** 手动刷新：不管数据新旧，立刻向手机端拉一次。 */
+  onRefreshTap() {
+    if (!this.online) {
+      this.goOffline("未连接手机");
+      return;
+    }
+    this.statusColor = C.idle;
+    this.statusText = "获取中…";
+    this.autoRequested = true;
+    this.requestNote();
+  },
+
+  openSettings() {
+    router.push({ uri: "/pages/settings" });
+  },
+
+  /** 只重读设置页写的默认显示用户，并按需切过去。 */
+  refreshDefaultId() {
+    try {
+      file.readText({
+        uri: DEF_URI,
+        success: (data) => {
+          let id = "";
+          let follow = true;
+          if (data && data.text) {
+            try {
+              const d = JSON.parse(data.text);
+              if (d && d.id) {
+                id = d.id;
+                follow = false;
+              }
+            } catch (e) {}
+          }
+          if (id === this.defaultId && follow === this.defaultFollow) return;
+          this.defaultId = id;
+          this.defaultFollow = follow;
+          if (!follow && id) this.applySavedSelection();
+        },
+        fail: () => {}
+      });
+    } catch (e) {}
   },
 
   handleMessage(raw) {
@@ -472,26 +486,23 @@ export default {
     this.emptyText = m.error || (this.payload && this.payload.noteError) || "暂无便签数据";
     this.selId = m.id || "";
     this.accountText = (m.label || "账号") + " " + (this.selIndex + 1) + "/" + this.accountCount;
-    this.rebuildRows();
     this.refreshLiveResin();
   },
 
-  /** ⋯ 浮层里的账号名册（当前账号高亮，点按切换）。 */
-  rebuildRows() {
-    const rows = [];
-    for (let i = 0; i < this.accounts.length; i++) {
-      const a = this.accounts[i] || {};
-      rows.push({
-        id: a.id || "i" + i,
-        text: (a.label || "账号 " + (i + 1)) + (a.error ? "（" + a.error + "）" : ""),
-        pos: i,
-        current: i === this.selIndex
-      });
-    }
-    this.accountRows = rows;
-  },
+  // ---------------- 账号切换（上下滑动） ----------------
 
-  // ---------------- 账号切换 ----------------
+  /**
+   * 上下滑动切换账号：上滑 = 下一个，下滑 = 上一个。
+   * 切换结果只更新底部那一行（不弹窗，避免遮挡数据）。
+   */
+  onSwipe(evt) {
+    const dir = evt && evt.direction;
+    if (dir === "up") {
+      this.nextAccount();
+    } else if (dir === "down") {
+      this.prevAccount();
+    }
+  },
 
   nextAccount() {
     this.switchTo(this.selIndex + 1);
@@ -499,11 +510,6 @@ export default {
 
   prevAccount() {
     this.switchTo(this.selIndex - 1);
-  },
-
-  pickAccount(pos) {
-    this.switchTo(pos);
-    if (this.showAbout) this.showAbout = false;
   },
 
   /** 环形切换；选中结果立刻落盘，重启或重新同步后仍停在同一个账号。 */
@@ -516,7 +522,6 @@ export default {
     this.selIndex = idx;
     this.saveSelection(this.accounts[idx].id);
     this.applyAccount();
-    prompt.showToast({ message: this.accountText });
   },
 
   /**
@@ -645,7 +650,48 @@ export default {
     } catch (e) {}
   },
 
-  /** 先恢复上次选中的账号，再读数据缓存，保证缓存渲染出来的就是那个账号。 */
+  /** 默认显示用户（空字符串 = 跟随手机当前账号）。 */
+  saveDefault(id) {
+    try {
+      file.writeText({
+        uri: DEF_URI,
+        text: JSON.stringify(id ? { id: id } : { follow: true }),
+        success: () => {},
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+
+  /**
+   * 启动时读设置：先读「默认显示用户」，再读「上次选中」，最后读数据缓存。
+   * 默认显示用户优先——它就是用来决定"打开手表应用时先看哪个号"的。
+   */
+  loadPrefs() {
+    try {
+      file.readText({
+        uri: DEF_URI,
+        success: (data) => {
+          if (data && data.text) {
+            try {
+              const d = JSON.parse(data.text);
+              if (d && d.id) {
+                this.defaultId = d.id;
+                this.defaultFollow = false;
+              } else {
+                this.defaultFollow = true;
+              }
+            } catch (e) {}
+          }
+          this.loadSelection();
+        },
+        fail: () => this.loadSelection()
+      });
+    } catch (e) {
+      this.loadSelection();
+    }
+  },
+
+  /** 恢复上次选中的账号（有默认显示用户时以默认为准），再读数据缓存。 */
   loadSelection() {
     try {
       file.readText({
@@ -657,10 +703,14 @@ export default {
               if (s && s.id) this.selId = s.id;
             } catch (e) {}
           }
+          if (!this.defaultFollow && this.defaultId) this.selId = this.defaultId;
           this.applySavedSelection();
           this.loadCache();
         },
-        fail: () => this.loadCache()
+        fail: () => {
+          if (!this.defaultFollow && this.defaultId) this.selId = this.defaultId;
+          this.loadCache();
+        }
       });
     } catch (e) {
       this.loadCache();
@@ -717,10 +767,6 @@ export default {
         done();
       }
     });
-  },
-
-  toggleAbout() {
-    this.showAbout = !this.showAbout;
   },
 
   onDestroy() {

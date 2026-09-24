@@ -119,6 +119,16 @@ class MainActivity : AppCompatActivity() {
 
         store = CookieStore(this)
         settings = SettingsStore(this)
+        // 右上角设置入口（对标 Shizuku：设置不再是底部页签）
+        binding.toolbar.inflateMenu(R.menu.main_menu)
+        binding.toolbar.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.action_settings) {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            } else {
+                false
+            }
+        }
         // 保活自愈：应用每次被打开时，只要开关是开的而服务没跑，就补起来
         restoreWatchSync()
 
@@ -157,8 +167,9 @@ class MainActivity : AppCompatActivity() {
                     showToolsPage()
                     true
                 }
-                R.id.tab_settings -> {
-                    startActivity(Intent(this, SettingsActivity::class.java))
+                R.id.tab_watch -> {
+                    // 原先这里是「设置」：设置已移到主界面右上角图标，底部这一格改成手表同步
+                    startActivity(Intent(this, WatchSyncActivity::class.java))
                     binding.bottomNav.post { binding.bottomNav.selectedItemId = R.id.tab_home }
                     true
                 }

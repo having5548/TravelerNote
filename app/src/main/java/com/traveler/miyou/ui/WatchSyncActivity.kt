@@ -29,6 +29,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.traveler.miyou.R
 import com.traveler.miyou.databinding.ActivityWatchSyncBinding
 import com.traveler.miyou.net.BackgroundEngine
+import com.traveler.miyou.store.AccountStore
 import com.traveler.miyou.store.SettingsStore
 import com.traveler.miyou.watch.ShizukuKeeper
 import com.traveler.miyou.watch.WatchNoteSync
@@ -76,7 +77,6 @@ class WatchSyncActivity : AppCompatActivity() {
         // 设置页也应用同一份背景与材质，保持视觉一致
         BackgroundEngine.apply(this)
 
-        setupSend()
         setupSyncToggle()
         setupKeepAlive()
         setupInterval()
@@ -160,20 +160,6 @@ class WatchSyncActivity : AppCompatActivity() {
             if (st.storageUsedKb >= 0) getString(R.string.watch_storage_fmt, st.storageUsedKb)
             else getString(R.string.watch_unknown)
         renderDiag()
-    }
-
-    // ---------------- 立即发送 ----------------
-
-    private fun setupSend() {
-        binding.sendBtn.setOnClickListener {
-            binding.sendBtn.isEnabled = false
-            binding.sendStatus.text = getString(R.string.watch_sending)
-            lifecycleScope.launch {
-                val result = WatchNoteSync.sendNow(applicationContext)
-                binding.sendStatus.text = result.message
-                binding.sendBtn.isEnabled = true
-            }
-        }
     }
 
     // ---------------- 同步开关 ----------------
@@ -286,7 +272,12 @@ class WatchSyncActivity : AppCompatActivity() {
                 else -> getString(R.string.watch_diag_push_none)
             },
             st.accountsSummary?.let { getString(R.string.watch_diag_accounts_fmt, it) }
-                ?: getString(R.string.watch_diag_accounts_none)
+                ?: getString(R.string.watch_diag_accounts_fmt, localAccountSummary()),
+            when {
+                st.preparing -> getString(R.string.watch_diag_watch_preparing)
+                st.connected -> getString(R.string.watch_diag_watch_connected)
+                else -> getString(R.string.watch_diag_watch_waiting)
+            }
         )
         binding.diagText.text = lines.joinToString("\n")
         binding.syncSwitch.isChecked = settings.watchSyncEnabled
@@ -300,6 +291,19 @@ class WatchSyncActivity : AppCompatActivity() {
     private fun ignoringBatteryOptimizations(): Boolean = runCatching {
         getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true
     }.getOrDefault(false)
+
+    /**
+     * 拉取模式下手表能看到哪些账号：直接按当前账号列表算（最多 5 个，与手机端推送上限一致），
+     * 不再依赖"最近一次推送"。
+     */
+    private fun localAccountSummary(): String {
+        val accounts = AccountStore(this)
+        val labels = accounts.ids()
+            .take(WatchNoteSync.MAX_WATCH_ACCOUNTS)
+            .map { accounts.label(it).substringBefore("（").trim() }
+            .filter { it.isNotBlank() }
+        return labels.joinToString("、").ifBlank { getString(R.string.watch_diag_accounts_none) }
+    }
 
     private fun exactAlarmAllowed(): Boolean =
         if (Build.VERSION.SDK_INT >= 31) {

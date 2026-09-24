@@ -11,7 +11,9 @@ import com.traveler.miyou.store.CookieStore
 import com.xiaomi.xms.wearable.Wearable
 import com.xiaomi.xms.wearable.auth.Permission
 import com.xiaomi.xms.wearable.node.DataItem
+import com.xiaomi.xms.wearable.node.DataSubscribeResult
 import com.xiaomi.xms.wearable.node.Node
+import com.xiaomi.xms.wearable.node.OnDataChangedListener
 import com.xiaomi.xms.wearable.tasks.Task
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +63,26 @@ object WatchNoteSync {
     private var appContext: Context? = null
     private var listenerNodeId: String? = null
 
-    /** 载荷缓存：定时推送和手表主动拉取可能挨得很近，别重复打米游社接口。 */
+    /**
+     * 连接状态机：
+     * - 手表断连 → 进入**准备状态**（不再反复推数据，只等重连）
+     * - 手表重连 → **立刻**拉起手表端应用并补推一次数据（见 [onWatchReconnected]）
+     */
+    @Volatile
+    private var lastConnected: Boolean? = null
+
+    /** 已订阅过 ITEM_CONNECTION 的节点（订阅只为更快发现断连，轮询仍是兜底）。 */
+    private var subscribedNodeId: String? = null
+
+    private val connectionListener = OnDataChangedListener { _, _, result ->
+        runCatching {
+            if (result.connectedStatus == DataSubscribeResult.RESULT_CONNECTION_DISCONNECTED) {
+                markDisconnected()
+            }
+        }
+    }
+
+    /** 载荷缓存：手表可能连续拉取，别重复打米游社接口。 */
     private var payloadCache: JSONObject? = null
     private var payloadCacheAt = 0L
     private const val PAYLOAD_TTL_MS = 60_000L
@@ -69,6 +90,28 @@ object WatchNoteSync {
     private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { c ->
         addOnSuccessListener { if (c.isActive) c.resume(it) }
         addOnFailureListener { if (c.isActive) c.resumeWithException(it) }
+    }
+
+    // ---------------- 连接状态机 ----------------
+
+    private fun markDisconnected() {
+        lastConnected = false
+        WatchSyncState.update {
+            it.copy(
+                connected = false, deviceName = null, battery = -1, charging = false,
+                preparing = true, lastCheck = System.currentTimeMillis()
+            )
+        }
+    }
+
+    /**
+     * 手表重新连上：只更新连接状态。
+     *
+     * 现在是**手表端主动拉取**的模式——手机端不再自动推送、也不再主动拉起手表应用；
+     * 手表打开应用或点刷新时会发 `requestNote`，这里负责把数据回给它。
+     */
+    private fun onWatchReconnected() {
+        WatchSyncState.update { it.copy(preparing = false, connected = true) }
     }
 
     // ---------------- 状态查询 ----------------
@@ -86,19 +129,19 @@ object WatchNoteSync {
         val node = try {
             Wearable.getNodeApi(app).getConnectedNodes().await().firstOrNull()
         } catch (e: Exception) {
-            WatchSyncState.update {
-                it.copy(connected = false, deviceName = null, battery = -1, charging = false, lastCheck = System.currentTimeMillis())
-            }
+            markDisconnected()
             return
         }
         if (node == null) {
-            WatchSyncState.update {
-                it.copy(
-                    connected = false, deviceName = null, battery = -1, charging = false,
-                    installed = null, lastCheck = System.currentTimeMillis()
-                )
-            }
+            markDisconnected()
             return
+        }
+
+        // 断连后重新连上：立刻拉起手表端 + 补推一次
+        val reconnected = lastConnected == false
+        lastConnected = true
+        if (reconnected) {
+            onWatchReconnected()
         }
 
         val granted = runCatching {
@@ -121,6 +164,7 @@ object WatchNoteSync {
             Wearable.getNodeApi(app).isWearAppInstalled(node.id).await()
         }.getOrNull()
         ensureListener(app, node.id)
+        ensureConnectionSubscription(app, node.id)
         WatchSyncState.update {
             it.copy(
                 connected = true, deviceName = node.name, battery = battery, charging = charging,
@@ -147,31 +191,21 @@ object WatchNoteSync {
     // ---------------- 便签推送 ----------------
 
     /**
-     * 手动推送（页面上「发送便签到手表」）：先做一次"手表端是否已安装"的友好检查，
-     * 不抛异常，结果在 [SendResult] 里。
-     */
-    suspend fun sendNow(context: Context): SendResult {
-        val app = context.applicationContext
-        appContext = app
-        val node = connectedNode(app)
-            ?: return fail("未找到已连接的手表（请确认手表蓝牙已连接，且手机上小米运动健康已配对设备）")
-        val installed = runCatching {
-            Wearable.getNodeApi(app).isWearAppInstalled(node.id).await()
-        }.getOrNull()
-        if (installed == false) {
-            return fail("手表端还未安装「旅行便签」快应用：请先在手表上安装 rpk（Release 里的 com.traveler.miyou.release.*.rpk）")
-        }
-        return pushNote(context, forceRefresh = true)
-    }
-
-    /**
-     * 推送一条便签到手表（保活服务启动时、定时刷新时、手表主动拉取时都走这里）。
-     * 失败时**也会给手表发一条带 noteError 的载荷**，让手表端直接显示原因而不是干等。
+     * 把便签数据发给手表。
+     *
+     * 现在**只有手表端主动拉取时**才会调用（手表打开应用 / 点刷新 / 数据超过 4 小时自动获取）：
+     * 手机端不再定时推送，也不主动拉起手表应用。失败时也会回一条带 noteError 的载荷，
+     * 让手表端直接显示原因而不是干等。
      */
     suspend fun pushNote(context: Context, forceRefresh: Boolean = false): SendResult {
         val app = context.applicationContext
         appContext = app
-        val node = connectedNode(app) ?: return fail("未找到已连接的手表")
+        val node = connectedNode(app)
+        if (node == null) {
+            // 手表不在线：进入准备状态（不算错误）
+            markDisconnected()
+            return SendResult(false, "手表未连接")
+        }
         runCatching { ensurePermission(node.id) }
 
         val payload = try {
@@ -206,21 +240,18 @@ object WatchNoteSync {
                     noteError = null,
                     notePushedAt = System.currentTimeMillis(),
                     startError = null,
+                    preparing = false,
+                    connected = true,
                     accountsSummary = summary.joinToString("、").takeIf { summary.isNotEmpty() }
                 )
             }
             val suffix = if (summary.size > 1) "（${summary.size} 个账号）" else ""
-            SendResult(true, "已发送到「${node.name}」$suffix")
+            SendResult(true, "已同步到「${node.name}」$suffix")
         } catch (e: Exception) {
             val reason = e.message ?: e.javaClass.simpleName
             WatchSyncState.update { it.copy(noteError = reason) }
-            SendResult(false, "发送失败：$reason")
+            SendResult(false, "同步失败：$reason")
         }
-    }
-
-    private fun fail(message: String): SendResult {
-        WatchSyncState.update { it.copy(noteError = message) }
-        return SendResult(false, message)
     }
 
     private suspend fun connectedNode(app: Context): Node? = try {
@@ -247,6 +278,21 @@ object WatchNoteSync {
     }
 
     // ---------------- 消息监听 ----------------
+
+    /**
+     * 订阅手表连接状态：断连能更快发现（进入准备状态）。
+     * 订阅失败无所谓——[refreshStatus] 的轮询仍是兜底。
+     */
+    private fun ensureConnectionSubscription(app: Context, nodeId: String) {
+        if (subscribedNodeId == nodeId) return
+        subscribedNodeId?.let { old ->
+            runCatching { Wearable.getNodeApi(app).unsubscribe(old, DataItem.ITEM_CONNECTION) }
+        }
+        subscribedNodeId = nodeId
+        runCatching {
+            Wearable.getNodeApi(app).subscribe(nodeId, DataItem.ITEM_CONNECTION, connectionListener)
+        }
+    }
 
     /**
      * 注册（或切换到新设备）消息监听：处理手表的 requestNote 自动回发与 storageInfo 回包。

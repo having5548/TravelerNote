@@ -105,7 +105,7 @@
     <string name="settings_github">GitHub</string>
     <string name="github_handle">having5548</string>
     <string name="settings_version">版本</string>
-    <string name="version_name">1.1.10</string>
+    <string name="version_name">1.1.12</string>
     <string name="disclaimer_title">免责声明</string>
 
     <string name="onboarding_title">使用前请仔细阅读</string>
@@ -244,8 +244,6 @@
     <string name="watch_installed_no">手表端应用：未安装（需先用 AstroBox 安装 rpk）</string>
     <string name="watch_installed_unknown">手表端应用：未检测</string>
     <string name="watch_last_check_fmt">上次检查 %1$s</string>
-    <string name="watch_sending">正在获取便签数据并发送…</string>
-    <string name="watch_send">发送便签到手表</string>
     <string name="watch_section_app">手表应用信息</string>
     <string name="watch_section_sync">数据同步</string>
     <string name="watch_section_keepalive">保活方式</string>
@@ -290,11 +288,15 @@
     <string name="watch_diag_shizuku_missing">Shizuku：未安装/未运行</string>
     <string name="watch_diag_shizuku_denied">Shizuku：未授权</string>
     <string name="watch_diag_shizuku_ok">Shizuku：已授权（看门狗可用 shell 拉起）</string>
-    <string name="watch_diag_push_ok">最近推送：%1$s 成功</string>
-    <string name="watch_diag_push_fail">最近推送：%1$s 失败（%2$s）</string>
-    <string name="watch_diag_push_none">最近推送：尚未推送</string>
-    <string name="watch_diag_accounts_fmt">推送的账号：%1$s（手表端可点按切换，最多 5 个）</string>
-    <string name="watch_diag_accounts_none">推送的账号：暂无</string>
+    <string name="watch_diag_push_ok">最近同步：%1$s（手表来取过数据）</string>
+    <string name="watch_diag_push_fail">最近同步：%1$s 失败（%2$s）</string>
+    <string name="watch_diag_push_none">最近同步：还没有被手表拉取过</string>
+    <string name="watch_diag_accounts_fmt">可同步的账号：%1$s（手表端最多显示 5 个）</string>
+    <string name="watch_diag_accounts_none">暂无</string>
+    <string name="watch_diag_watch_preparing">手表连接：准备中（等待重连；手表来取数据时会立刻响应）</string>
+    <string name="watch_diag_watch_connected">手表连接：已连接</string>
+    <string name="watch_pull_hint">手机端不再自动推送：手表打开应用、点右上角刷新，或距上次同步超过 4 小时时会自动来取最新数据。</string>
+    <string name="watch_diag_watch_waiting">手表连接：未连接</string>
     <string name="watch_tile_add">一键添加到快捷设置</string>
     <string name="watch_tile_add_requested">已请求添加「手表同步」磁贴，请在下拉快捷设置里确认</string>
     <string name="watch_tile_add_manual">请手动添加：下拉快捷设置 → 编辑 → 找到「手表同步」拖到面板</string>
@@ -316,6 +318,7 @@
     <string name="watch_service_connected_fmt">已连接：%1$s</string>
     <string name="watch_service_connected_battery_fmt">已连接：%1$s（%2$d%%）</string>
     <string name="watch_service_disconnected">未连接手表</string>
+    <string name="watch_service_preparing">准备中：等手表重连，连上后自动拉起并推送</string>
     <string name="watch_service_push_failed">推送失败：%1$s</string>
     <string name="watch_notification_stop">关闭同步</string>
     <string name="watch_tile_on">保活运行中</string>

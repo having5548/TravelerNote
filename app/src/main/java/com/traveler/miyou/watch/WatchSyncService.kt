@@ -29,9 +29,9 @@ import kotlinx.coroutines.launch
 
 /**
  * 手表同步保活服务（前台服务）：
- * - 启动时**立刻推一次便签**给手表（不看连接检查结果，失败会把原因记进 [WatchSyncState]）
- * - 之后按用户选择的间隔：刷新手表连接状态 **并再推一次便签**（连接失败下一次继续尝试）
- * - 期间保持消息监听，手表端 requestNote 自动回发便签
+ * - **不再主动推数据**：数据由手表端主动拉取（手表打开应用 / 点刷新 / 数据超过 4 小时自动获取）
+ * - 服务只负责保持消息监听与连接状态最新，手表来 `requestNote` 时能立刻把数据回给它
+ * - 按用户选择的间隔刷新连接状态，并更新常驻通知
  *
  * 三种保活方式共用本服务，只差通知呈现：0 磁贴（静默）/ 1 常驻通知 / 2 Shizuku（静默 + 闹钟看门狗）。
  * 闹钟看门狗在服务被杀后负责把它拉回来，所以**服务正常销毁时不会取消闹钟**（只有用户关掉同步才取消）。
@@ -155,9 +155,8 @@ class WatchSyncService : Service() {
         scheduleWatchdog(this, settings.watchRefreshMinutes)
         refreshJob?.cancel()
         refreshJob = scope.launch {
+            // 只刷新连接状态：数据由手表端主动拉取（见 WatchNoteSync 的 requestNote 处理）
             runCatching { WatchNoteSync.refreshStatus(applicationContext) }
-            // 启动就推一次：不看连接检查结果，失败会把原因写进状态
-            runCatching { WatchNoteSync.pushNote(applicationContext, forceRefresh = true) }
             updateNotification()
             refreshLoop()
         }
@@ -169,9 +168,8 @@ class WatchSyncService : Service() {
         while (running && settings.watchSyncEnabled) {
             delay(settings.watchRefreshMinutes * 60_000L)
             if (!running) return
+            // 手机端不推数据：这里只让连接状态/权限/消息监听保持最新，手表来拉时能立刻回
             runCatching { WatchNoteSync.refreshStatus(applicationContext) }
-            // 按用户选择的间隔也推一次便签；连不上就下一次再来
-            runCatching { WatchNoteSync.pushNote(applicationContext, forceRefresh = false) }
             updateNotification()
         }
     }
@@ -179,6 +177,8 @@ class WatchSyncService : Service() {
     private fun updateNotification() {
         val st = WatchSyncState.status.value
         val text = when {
+            // 断连：进入准备状态，等手表回来
+            st.preparing -> getString(R.string.watch_service_preparing)
             !st.connected -> getString(R.string.watch_service_disconnected)
             st.noteError != null -> getString(R.string.watch_service_push_failed, st.noteError)
             st.battery in 1..100 -> getString(

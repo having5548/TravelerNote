@@ -1,0 +1,232 @@
+<template>
+  <div class="page column">
+    <div class="top row">
+      <image class="back" src="/common/icons/back.png" onclick="back" />
+      <text class="title">手表设置</text>
+    </div>
+
+    <scroll class="body" scroll-y="true">
+      <!-- 基础设置：默认显示用户 -->
+      <div class="card column">
+        <text class="section">基础设置</text>
+        <text class="item" for="{{ accountRows }}" tid="id" onclick="pickDefault($item.pos)"
+              style="color: {{ $item.isDefault ? '#3D7BFF' : '#BDBDBD' }}">{{ $item.text }}</text>
+        <text class="item" onclick="followPhone"
+              style="color: {{ defaultFollow ? '#3D7BFF' : '#BDBDBD' }}">跟随手机当前账号</text>
+        <text class="hint">{{ accountHint }}</text>
+      </div>
+
+      <!-- 关于作者 -->
+      <div class="card column">
+        <text class="section">关于作者</text>
+        <text class="line">旅行便签 · 手表端</text>
+        <text class="line">版本 {{ versionName }}</text>
+        <text class="line">打包 {{ buildTime }}</text>
+        <text class="line">作者 having5548</text>
+        <text class="line">github.com/having5548</text>
+      </div>
+    </scroll>
+  </div>
+</template>
+
+<style>
+.page {
+  flex-direction: column;
+  width: 432px;
+  height: 514px;
+  padding: 30px 26px 24px;
+  background-color: #0d0d0d;
+}
+
+.row {
+  flex-direction: row;
+}
+
+.column {
+  flex-direction: column;
+}
+
+.top {
+  align-items: center;
+  padding: 0px 6px;
+}
+
+.back {
+  width: 34px;
+  height: 34px;
+  margin-right: 12px;
+  opacity: 0.85;
+}
+
+.title {
+  color: #ffffff;
+  font-size: 25px;
+  font-weight: bold;
+}
+
+.body {
+  flex: 1;
+  flex-direction: column;
+  margin-top: 14px;
+}
+
+.card {
+  width: 100%;
+  flex-direction: column;
+  padding: 16px 20px;
+  margin-bottom: 14px;
+  background-color: #1c1c1e;
+  border-radius: 28px;
+}
+
+.section {
+  color: #8a8a8a;
+  font-size: 19px;
+  margin-bottom: 6px;
+}
+
+.item {
+  font-size: 22px;
+  text-align: center;
+  padding: 7px 0px;
+}
+
+.hint {
+  color: #616161;
+  font-size: 17px;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.line {
+  color: #bdbdbd;
+  font-size: 20px;
+  padding: 3px 0px;
+  text-align: center;
+}
+</style>
+
+<script>
+import file from "@system.file";
+import router from "@system.router";
+import { versionName, buildTime } from "../../common/buildinfo";
+
+const CACHE_URI = "internal://files/note_cache.json";
+const DEF_URI = "internal://files/note_default.json";
+const MAX_ACCOUNTS = 5;
+
+/**
+ * 手表设置（二级页）：
+ * - 基础设置：默认显示用户（跟随手机当前账号 / 指定某个账号）
+ * - 关于作者：版本、打包时间、作者信息
+ */
+export default {
+  private: {
+    accountRows: [],
+    accountHint: "还没有同步过数据，先在主界面点刷新",
+    defaultId: "",
+    defaultFollow: true,
+    versionName: versionName,
+    buildTime: buildTime
+  },
+
+  onReady() {
+    this.accountRows = [];
+    this.loadDefault();
+  },
+
+  // ---------------- 默认显示用户 ----------------
+
+  loadDefault() {
+    try {
+      file.readText({
+        uri: DEF_URI,
+        success: (data) => {
+          if (data && data.text) {
+            try {
+              const d = JSON.parse(data.text);
+              if (d && d.id) {
+                this.defaultId = d.id;
+                this.defaultFollow = false;
+              }
+            } catch (e) {}
+          }
+          this.loadAccounts();
+        },
+        fail: () => this.loadAccounts()
+      });
+    } catch (e) {
+      this.loadAccounts();
+    }
+  },
+
+  /** 账号来自主界面那份整包缓存（手机端给的 accounts 数组）。 */
+  loadAccounts() {
+    try {
+      file.readText({
+        uri: CACHE_URI,
+        success: (data) => {
+          if (!data || !data.text) return;
+          let msg = null;
+          try {
+            msg = JSON.parse(data.text);
+          } catch (e) {
+            return;
+          }
+          if (!msg) return;
+          const list = msg.accounts && msg.accounts.length
+            ? msg.accounts.slice(0, MAX_ACCOUNTS)
+            : (msg.type === "dailyNote" ? [msg] : []);
+          const rows = [];
+          for (let i = 0; i < list.length; i++) {
+            const a = list[i] || {};
+            const isDefault = !this.defaultFollow && !!a.id && a.id === this.defaultId;
+            rows.push({
+              id: a.id || "i" + i,
+              text: (a.label || "账号 " + (i + 1)) + (isDefault ? " ✓" : ""),
+              pos: i,
+              isDefault: isDefault
+            });
+          }
+          this.accountRows = rows;
+          this.accountHint = rows.length > 1
+            ? "主界面上下滑动可快速切换账号"
+            : "手机端只有这一个账号";
+        },
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+
+  pickDefault(pos) {
+    const row = this.accountRows[pos];
+    if (!row || !row.id) return;
+    this.defaultId = row.id;
+    this.defaultFollow = false;
+    this.saveDefault(row.id);
+    this.loadAccounts();
+  },
+
+  followPhone() {
+    this.defaultId = "";
+    this.defaultFollow = true;
+    this.saveDefault("");
+    this.loadAccounts();
+  },
+
+  saveDefault(id) {
+    try {
+      file.writeText({
+        uri: DEF_URI,
+        text: JSON.stringify(id ? { id: id } : { follow: true }),
+        success: () => {},
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+
+  back() {
+    router.back();
+  }
+};
+</script>

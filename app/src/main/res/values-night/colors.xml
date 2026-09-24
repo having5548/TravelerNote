@@ -13,4 +13,26 @@
     <!-- 资讯来源分段控件（深色） -->
     <color name="seg_track">#20232E</color>
     <color name="seg_thumb">#3C4250</color>
+
+    <!-- Material 3 色彩角色（深色）：与浅色一一对应 -->
+    <color name="surface_container">#1B1E27</color>
+    <color name="surface_container_high">#242833</color>
+    <color name="on_surface">#E6E8F0</color>
+    <color name="on_surface_variant">#9AA3B5</color>
+    <color name="outline_variant">#313648</color>
+    <color name="secondary_container">#262A36</color>
+    <color name="on_secondary_container">#DCE0EA</color>
+
+    <color name="primary_container_blue">#2A3170</color>
+    <color name="on_primary_container_blue">#DDE1FF</color>
+    <color name="primary_container_teal">#00433F</color>
+    <color name="on_primary_container_teal">#B6F0EA</color>
+    <color name="primary_container_purple">#45328F</color>
+    <color name="on_primary_container_purple">#E7DEFF</color>
+    <color name="primary_container_rose">#7A1F45</color>
+    <color name="on_primary_container_rose">#FFD9E5</color>
+    <color name="primary_container_orange">#5A3400</color>
+    <color name="on_primary_container_orange">#FFDDB6</color>
+    <color name="primary_container_green">#0B4F31</color>
+    <color name="on_primary_container_green">#B7F0D0</color>
 </resources>
