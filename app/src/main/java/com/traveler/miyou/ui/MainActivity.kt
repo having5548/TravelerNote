@@ -38,6 +38,9 @@ private const val AUTO_REFRESH_INTERVAL_MS = 60_000L
 /** 「游戏资讯」自动刷新的节流间隔（手动点刷新不受限制）。 */
 private const val NEWS_INTERVAL_MS = 10 * 60_000L
 
+/** 公告每个分组默认展示的条数：再多也不丢，只是折叠成「展开剩余 N 条」。 */
+private const val NOTICE_PREVIEW = 5
+
 /**
  * 在页面脚本执行前注入：屏蔽「打开 App / 下载客户端」这类入口。
  * 真正的兜底在 WebViewClient 与 DownloadListener（非 http(s)、apk 一律拦掉）。
@@ -62,6 +65,12 @@ private const val BLOCK_JS = """
 """
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        /** 从通知/设置页跳进来时指定落在哪一页（目前只有手表同步）。 */
+        const val EXTRA_PAGE = "extra_page"
+        const val PAGE_WATCH = "watch"
+    }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var store: CookieStore
@@ -94,6 +103,14 @@ class MainActivity : AppCompatActivity() {
     /** 上次成功刷新「游戏资讯」的时间。 */
     private var lastNewsAt = 0L
 
+    /** 公告分组展开状态（key = type_id）与最近一次公告结果（展开/收起时重绘用）。 */
+    private val noticeExpanded = mutableSetOf<Int>()
+    private var lastAnnouncement: com.traveler.miyou.net.AnnouncementResult? = null
+
+    /** 最近一次补签信息与角色（点「补签」时用来确认消耗、重试与刷新）。 */
+    private var lastResignInfo: com.traveler.miyou.net.LunaResignInfo? = null
+    private var lastRole: com.traveler.miyou.net.GameRole? = null
+
     private val captchaLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val validate = result.data?.getStringExtra("validate")
@@ -121,6 +138,8 @@ class MainActivity : AppCompatActivity() {
         settings = SettingsStore(this)
         // 右上角设置入口（对标 Shizuku：设置不再是底部页签）
         binding.toolbar.inflateMenu(R.menu.main_menu)
+        // 菜单图标是矢量里写死的白色：先按当前背景算一次对比色（浅色壁纸下要变深色才看得见）
+        ThemeHelper.applyToolbarContent(this)
         binding.toolbar.setOnMenuItemClickListener { item ->
             if (item.itemId == R.id.action_settings) {
                 startActivity(Intent(this, SettingsActivity::class.java))
@@ -134,7 +153,8 @@ class MainActivity : AppCompatActivity() {
 
         adapter = NoteAdapter(
             onRefresh = { refreshHome() },
-            onCommunitySign = { signCommunity() }
+            onCommunitySign = { signCommunity() },
+            onResign = { resignLunaReward() }
         )
         binding.recycler.layoutManager = LinearLayoutManager(this)
         binding.recycler.adapter = adapter
@@ -168,15 +188,21 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
                 R.id.tab_watch -> {
-                    // 原先这里是「设置」：设置已移到主界面右上角图标，底部这一格改成手表同步
-                    startActivity(Intent(this, WatchSyncActivity::class.java))
-                    binding.bottomNav.post { binding.bottomNav.selectedItemId = R.id.tab_home }
+                    // 手表同步是**页内内容**（Fragment），不再 startActivity 拉一个新界面
+                    showWatchPage()
                     true
                 }
                 else -> {
                     showHomePage()
                     true
                 }
+            }
+        }
+        // 已经在手表同步页时再点一次：刷新一次连接状态
+        binding.bottomNav.setOnItemReselectedListener { item ->
+            if (item.itemId == R.id.tab_watch) {
+                (supportFragmentManager.findFragmentById(R.id.watchPage) as? WatchSyncFragment)
+                    ?.onPageShown()
             }
         }
 
@@ -193,11 +219,15 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        showHomePage()
-        refreshHome()
+        // 通知栏点进来可能直接落在手表同步页
+        if (intent?.getStringExtra(EXTRA_PAGE) == PAGE_WATCH) {
+            binding.bottomNav.selectedItemId = R.id.tab_watch
+        } else {
+            showHomePage()
+            refreshHome()
+        }
         showLastCrash()
     }
-
     /**
      * 手表同步自愈入口：开关开着而服务没运行时把它补起来（此时应用在前台，启动前台服务不会被系统拒绝），
      * 同时重排一次看门狗闹钟，避免"闹钟丢了 + 服务被杀"两个问题叠加后再也起不来。
@@ -211,8 +241,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 背景与磨砂/亚克力效果实时生效：是否重绘由 BackgroundEngine 内部按签名判断
-        BackgroundEngine.apply(this)
+        // 背景与磨砂/亚克力效果实时生效：是否重绘由 BackgroundEngine 内部按签名判断。
+        // 背景真正就绪后再按它的明暗调整顶栏图标/标题的对比色（浅色壁纸下原来图标看不见）
+        BackgroundEngine.apply(this) { ThemeHelper.applyToolbarContent(this) }
         // 自动签到做节流，避免频繁切换前后台时反复请求；手动刷新按钮不受此限制
         val now = System.currentTimeMillis()
         if (store.hasAnyCredential() && now - lastRefreshAt > AUTO_REFRESH_INTERVAL_MS) {
@@ -237,8 +268,9 @@ class MainActivity : AppCompatActivity() {
         binding.charactersScroll.visibility = View.GONE
         binding.newsPage.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.GONE
+        binding.watchPage.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
-        ThemeHelper.applyToolbarScrim(this)
+        ThemeHelper.applyToolbarContent(this)
         binding.toolbar.title = getString(R.string.app_name)
         applyRootTopInset(false)
     }
@@ -249,8 +281,9 @@ class MainActivity : AppCompatActivity() {
         binding.charactersScroll.visibility = View.VISIBLE
         binding.newsPage.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.GONE
+        binding.watchPage.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
-        ThemeHelper.applyToolbarScrim(this)
+        ThemeHelper.applyToolbarContent(this)
         binding.toolbar.title = getString(R.string.tab_characters)
         loadCharacters()
         applyRootTopInset(false)
@@ -263,8 +296,9 @@ class MainActivity : AppCompatActivity() {
         binding.charactersScroll.visibility = View.GONE
         binding.newsPage.visibility = View.VISIBLE
         binding.toolsWebContainer.visibility = View.GONE
+        binding.watchPage.visibility = View.GONE
         binding.toolbar.visibility = View.VISIBLE
-        ThemeHelper.applyToolbarScrim(this)
+        ThemeHelper.applyToolbarContent(this)
         binding.toolbar.title = getString(R.string.tab_news)
         applyRootTopInset(false)
         applyNewsSource()
@@ -320,10 +354,51 @@ class MainActivity : AppCompatActivity() {
         binding.recycler.visibility = View.GONE
         binding.charactersScroll.visibility = View.GONE
         binding.newsPage.visibility = View.GONE
+        binding.watchPage.visibility = View.GONE
         binding.toolsWebContainer.visibility = View.VISIBLE
         binding.toolbar.visibility = View.GONE
         applyRootTopInset(true)
         ToolsWeb(this, binding, store).show()
+    }
+
+    /**
+     * 手表同步页：**页内内容**，从底部栏或通知进来。
+     * 切换时做一次淡入 + 轻微上移，避免像以前那样硬拉一个新界面。
+     */
+    private fun showWatchPage() {
+        hideNoticeOverlay()
+        binding.recycler.visibility = View.GONE
+        binding.charactersScroll.visibility = View.GONE
+        binding.newsPage.visibility = View.GONE
+        binding.toolsWebContainer.visibility = View.GONE
+        binding.watchPage.visibility = View.VISIBLE
+        binding.toolbar.visibility = View.VISIBLE
+        ThemeHelper.applyToolbarContent(this)
+        binding.toolbar.title = getString(R.string.watch_title)
+        applyRootTopInset(false)
+        animatePageIn(binding.watchPage)
+        // 让页内 Fragment 刷新一次连接状态（替代原来 Activity 的 onResume）。
+        // 用 post：如果是通知直接进入本页，Fragment 的视图可能还没 attach 完。
+        binding.watchPage.post {
+            (supportFragmentManager.findFragmentById(R.id.watchPage) as? WatchSyncFragment)
+                ?.onPageShown()
+        }
+    }
+
+    /** 页内切换的平滑过渡：淡入 + 轻微上移。 */
+    private fun animatePageIn(page: View) {
+        page.animate().cancel()
+        page.alpha = 0f
+        page.translationY = dp(10).toFloat()
+        page.animate().alpha(1f).translationY(0f).setDuration(180L).start()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getStringExtra(EXTRA_PAGE) == PAGE_WATCH) {
+            binding.bottomNav.selectedItemId = R.id.tab_watch
+        }
     }
 
     override fun onDestroy() {
@@ -528,20 +603,60 @@ class MainActivity : AppCompatActivity() {
                     signedToday -> getString(R.string.calendar_summary_signed, signedDays, todayAward.name, todayAward.cnt)
                     else -> getString(R.string.calendar_summary_unsigned, signedDays, todayAward.name, todayAward.cnt)
                 }
-                items.add(HomeItem.Calendar(awards, signedDays, signedToday, calendarSummary))
+                // 补签信息：本月漏签天数、每次消耗多少米游币（只读，不发补签）
+                val resignInfo = if (role == null) {
+                    null
+                } else {
+                    withContext(Dispatchers.IO) {
+                        MiyouApi.fetchLunaResignInfo(store.cookieTokenCookieStr(), deviceId, role.uid, role.region)
+                    }
+                }
+                lastResignInfo = resignInfo
+                lastRole = role
+                val calendarResignHint = when {
+                    resignInfo == null || resignInfo.message.isNotBlank() -> getString(R.string.resign_hint_unknown)
+                    resignInfo.missedDays <= 0 -> getString(R.string.resign_hint_no_missed)
+                    resignInfo.coinCost <= 0 -> getString(R.string.resign_hint_free, resignInfo.missedDays)
+                    else -> getString(R.string.resign_hint, resignInfo.missedDays, resignInfo.coinCost)
+                }
+                items.add(
+                    HomeItem.Calendar(
+                        awards, signedDays, signedToday, calendarSummary,
+                        missedDays = resignInfo?.missedDays ?: -1,
+                        resignHint = if (role == null) "" else calendarResignHint,
+                        resignEnabled = role != null && resignInfo != null && resignInfo.canResign
+                    )
+                )
                 items.add(HomeItem.Footer)
                 adapter.submit(items)
                 adapter.setSignStatus(lunaText)
 
-                // 社区签到这里只查状态，绝不自动签（社区签到必须手动点按钮）
-                val bbsSigned = withContext(Dispatchers.IO) { MiyouApi.fetchBbsSignedToday(fullCookie) }
+                // 社区签到这里只查状态，绝不自动签（社区签到必须手动点按钮）；
+                // 同一个回包顺带给出米游币余额（total_points）与今日收支，显示在社区签到下方
+                val bbs = withContext(Dispatchers.IO) { MiyouApi.fetchBbsMissions(fullCookie) }
                 adapter.setCommunityStatus(
-                    when (bbsSigned) {
+                    when (bbs?.signedToday) {
                         true -> getString(R.string.community_sign_done)
                         false -> getString(R.string.community_sign_todo)
                         null -> getString(R.string.community_sign_unknown)
                     }
                 )
+                if (bbs != null) {
+                    // 米游币优先用社区任务口径；查不到时退回补签信息里的余额
+                    val coin = if (bbs.totalPoints > 0) bbs.totalPoints else (resignInfo?.coinCount ?: 0)
+                    val coinExtra = if (bbs.todayCanGet <= 0) {
+                        getString(R.string.miyou_coin_done)
+                    } else {
+                        getString(R.string.miyou_coin_today, bbs.todayGot, bbs.todayCanGet)
+                    }
+                    adapter.setCommunityCoin(coin.toString(), coinExtra)
+                } else {
+                    val fallback = resignInfo?.coinCount ?: 0
+                    adapter.setCommunityCoin(
+                        fallback.toString(),
+                        if (fallback > 0) getString(R.string.miyou_coin_done) else getString(R.string.miyou_coin_unknown)
+                    )
+                }
             } catch (e: Exception) {
                 adapter.setSignStatus(getString(R.string.network_error))
             }
@@ -619,6 +734,107 @@ class MainActivity : AppCompatActivity() {
     }
 
     private data class CommunityResult(val done: Boolean, val message: String)
+
+    // ---------------- 原神签到补签（消耗米游币） ----------------
+
+    /**
+     * 点「补签」：先用 resign_info 的结果算清楚要花多少米游币，让用户确认，
+     * 再调 /event/luna/resign；成功后**自动刷新**签到状态、日历与米游币。
+     * 出错时用原来的极验回退流程（无感打码 → 网页手验）重试一次。
+     */
+    private fun resignLunaReward() {
+        val role = lastRole
+        val info = lastResignInfo
+        if (role == null || info == null) {
+            toast(getString(R.string.resign_hint_unknown))
+            return
+        }
+        if (!info.canResign) {
+            toast(
+                when {
+                    info.missedDays <= 0 -> getString(R.string.resign_hint_no_missed)
+                    else -> getString(R.string.resign_hint_limit)
+                }
+            )
+            return
+        }
+        if (info.coinCost > 0 && info.coinCount > 0 && info.coinCount < info.coinCost) {
+            toast(getString(R.string.resign_coin_not_enough, info.coinCost, info.coinCount))
+            return
+        }
+        val message = if (info.coinCost > 0) {
+            getString(R.string.resign_confirm_msg, info.missedDays, info.coinCost, info.coinCount)
+        } else {
+            getString(R.string.resign_confirm_msg_free, info.missedDays)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.resign_confirm_title)
+            .setMessage(message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.resign_action) { _, _ -> doResignLuna(role) }
+            .show()
+    }
+
+    private fun doResignLuna(role: com.traveler.miyou.net.GameRole) {
+        toast(getString(R.string.resign_doing))
+        lifecycleScope.launch {
+            var result: com.traveler.miyou.net.LunaSignResult? = null
+            try {
+                var r = withContext(Dispatchers.IO) {
+                    MiyouApi.resignLuna(store.cookieTokenCookieStr(), store.deviceId(), role.uid, role.region)
+                }
+                if (r.needCaptcha) {
+                    // 无感打码优先（在 IO 线程）
+                    val solved = withContext(Dispatchers.IO) {
+                        CaptchaSolver.solve(settings, r.gt, r.challenge)
+                    }
+                    if (solved != null) {
+                        r = withContext(Dispatchers.IO) {
+                            MiyouApi.resignLuna(
+                                store.cookieTokenCookieStr(), store.deviceId(), role.uid, role.region,
+                                solved.challenge, solved.validate, "${solved.validate}|jordan"
+                            )
+                        }
+                    }
+                    // 还不行就回退网页手验（必须在主线程拉起验证页）
+                    if (r.needCaptcha) {
+                        val raw = showCaptchaWeb(r.gt, r.challenge, null, null)
+                        val cap = raw?.let { extractCaptcha(it, r.challenge) }
+                        if (cap != null) {
+                            r = withContext(Dispatchers.IO) {
+                                MiyouApi.resignLuna(
+                                    store.cookieTokenCookieStr(), store.deviceId(), role.uid, role.region,
+                                    cap.challenge, cap.validate, cap.seccode
+                                )
+                            }
+                        }
+                    }
+                }
+                result = r
+            } catch (e: Throwable) {
+                result = null
+            }
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(R.string.resign_confirm_title)
+                .setMessage(
+                    when {
+                        result == null -> getString(R.string.network_error)
+                        result.ok && result.already -> getString(R.string.resign_already)
+                        result.ok -> getString(R.string.resign_success)
+                        else -> getString(R.string.resign_failed, result.message)
+                    }
+                )
+                .setPositiveButton(R.string.close, null)
+                .show()
+            // 不管成功与否都刷新一次：成功要更新漏签天数/日历/米游币，失败也要拿最新状态
+            refreshHome()
+        }
+    }
+
+    /** 轻量提示（补签流程里用得多）。 */
+    private fun toast(text: String) {
+        android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_SHORT).show()
+    }
 
     private suspend fun signCommunityOnce(): CommunityResult {
         val deviceId = store.deviceId()
@@ -1148,9 +1364,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderActs(acts: List<com.traveler.miyou.net.NewsAct>) {
         val now = System.currentTimeMillis()
+        // 只显示**当前正在开启**的活动：官方会提前把活动挂到服务器上，
+        // 那些还没到开始时间的（以及已结束的）都不列出来，避免"活动还没开就显示出来"。
         val list = acts
-            .filter { it.endMs == 0L || it.endMs > now }
-            .sortedWith(compareBy({ if (phaseOf(it.startMs, it.endMs) == 2) 0 else 1 }, { it.endMs }))
+            .filter { a ->
+                val notEnded = a.endMs == 0L || a.endMs > now
+                val started = a.startMs == 0L || a.startMs <= now
+                notEnded && started
+            }
+            .sortedBy { if (it.endMs == 0L) Long.MAX_VALUE else it.endMs }
         if (list.isEmpty()) {
             binding.newsActs.addView(statusView(getString(R.string.news_empty)))
             return
@@ -1175,9 +1397,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderPools(pools: List<com.traveler.miyou.net.NewsCardPool>) {
         val now = System.currentTimeMillis()
+        // 与活动一样：只显示**当前正在开启**的池子，官方提前挂上去、还没开始的先不列
         val list = pools
-            .filter { it.endMs == 0L || it.endMs > now }
-            .sortedWith(compareBy({ if (phaseOf(it.startMs, it.endMs) == 2) 0 else 1 }, { it.endMs }))
+            .filter { p ->
+                val notEnded = p.endMs == 0L || p.endMs > now
+                val started = p.startMs == 0L || p.startMs <= now
+                notEnded && started
+            }
+            .sortedBy { if (it.endMs == 0L) Long.MAX_VALUE else it.endMs }
         if (list.isEmpty()) {
             binding.newsPools.addView(statusView(getString(R.string.news_empty)))
             return
@@ -1223,6 +1450,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderNotices(ann: com.traveler.miyou.net.AnnouncementResult) {
+        lastAnnouncement = ann
         if (!ann.ok || ann.total == 0) {
             binding.newsNotices.addView(
                 statusView(
@@ -1232,15 +1460,15 @@ class MainActivity : AppCompatActivity() {
             )
             return
         }
-        // 只展示前 12 条，避免首页太长；点开就是启动器同款公告正文
-        var shown = 0
+        // 每个分组默认只展示前 NOTICE_PREVIEW 条（避免首页过长），多出来的给"展开剩余 N 条"，
+        // 这样任何分组都不会被整体丢掉 —— 以前的全局 12 条上限会让后面的分组直接消失。
         for (g in ann.groups) {
-            if (shown >= 12) break
+            val expanded = noticeExpanded.contains(g.typeId)
             if (g.typeLabel.isNotBlank()) {
-                binding.newsNotices.addView(sectionLabel(g.typeLabel))
+                binding.newsNotices.addView(sectionLabel("${g.typeLabel} · ${g.notices.size}"))
             }
-            for (n in g.notices) {
-                if (shown >= 12) break
+            val shownItems = if (expanded) g.notices else g.notices.take(NOTICE_PREVIEW)
+            for (n in shownItems) {
                 val item = com.traveler.miyou.databinding.ItemNewsNoticeBinding
                     .inflate(layoutInflater, binding.newsNotices, false)
                 item.title.text = n.title
@@ -1259,7 +1487,24 @@ class MainActivity : AppCompatActivity() {
                 }
                 item.card.setOnClickListener { openNotice(n) }
                 binding.newsNotices.addView(item.root)
-                shown++
+            }
+            val rest = g.notices.size - shownItems.size
+            if (rest > 0) {
+                binding.newsNotices.addView(
+                    noticeMoreLabel(getString(R.string.news_expand_more, rest)) {
+                        noticeExpanded.add(g.typeId)
+                        binding.newsNotices.removeAllViews()
+                        renderNotices(ann)
+                    }
+                )
+            } else if (expanded && g.notices.size > NOTICE_PREVIEW) {
+                binding.newsNotices.addView(
+                    noticeMoreLabel(getString(R.string.news_collapse)) {
+                        noticeExpanded.remove(g.typeId)
+                        binding.newsNotices.removeAllViews()
+                        renderNotices(ann)
+                    }
+                )
             }
         }
     }
@@ -1331,6 +1576,16 @@ class MainActivity : AppCompatActivity() {
         textSize = 12f
         setTextColor(getColor(R.color.text_secondary))
         setPadding(0, dp(2), 0, dp(6))
+    }
+
+    /** 「展开剩余 N 条 / 收起」：默认每个分组只展示前几条，避免首页过长，但绝不静默丢条目。 */
+    private fun noticeMoreLabel(text: String, onClick: () -> Unit): TextView = TextView(this).apply {
+        this.text = text
+        textSize = 13f
+        setTextColor(getColor(R.color.expedition))
+        setPadding(0, dp(6), 0, dp(8))
+        isClickable = true
+        setOnClickListener { onClick() }
     }
 
     // ---------------- 游戏公告详情（应用内同一页打开，不新开 Activity） ----------------

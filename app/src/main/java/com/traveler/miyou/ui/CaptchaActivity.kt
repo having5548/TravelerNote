@@ -42,6 +42,8 @@ class CaptchaActivity : AppCompatActivity() {
             setResult(RESULT_CANCELED)
             finish()
         }
+        // 返回箭头是矢量里写死的白色：按当前明暗换成对比色，浅色底上也看得见
+        ThemeHelper.applyToolbarContent(this)
 
         val gt = intent.getStringExtra("gt") ?: ""
         val challenge = intent.getStringExtra("challenge") ?: ""

@@ -25,6 +25,8 @@
 
     <!-- 有背景图时状态栏压的薄雾（浅色），与工具栏遮罩顶部同色，避免顶部一条原图太突兀 -->
     <color name="scrim_status_bar">#D9FFFFFF</color>
+    <!-- 顶栏背后是偏暗的壁纸时压的黑雾（与白色标题/图标配套） -->
+    <color name="scrim_status_bar_dark">#B3000000</color>
 
     <!-- 资讯来源分段控件：浅色轨道 + 白色滑块（Apple 风格） -->
     <color name="seg_track">#ECEEF4</color>

@@ -424,6 +424,106 @@ fun parseApiResp(raw: String): ApiResp {
     }
 }
 
+// ---------- 原神签到补签（event/luna/resign_info） ----------
+
+/**
+ * 补签信息（字段口径与胡桃工具箱 SignInRewardReSignInfo 对齐）：
+ * - [missedDays] 本月漏签天数（sign_cnt_missed）
+ * - [signDays] 本月已签天数（sign_days）
+ * - [resignToday] / [resignMonth] 今日 / 本月已补签次数，[limitDaily] / [limitMonthly] 对应上限
+ * - [coinCost] 每次补签要花的米游币，[coinCount] 当前米游币余额
+ */
+data class LunaResignInfo(
+    val missedDays: Int,
+    val signDays: Int,
+    val signedToday: Boolean,
+    val resignToday: Int,
+    val resignMonth: Int,
+    val limitDaily: Int,
+    val limitMonthly: Int,
+    val coinCost: Int,
+    val coinCount: Int,
+    val cost: Int,
+    val rule: String,
+    val message: String = ""
+) {
+    /** 还有漏签、且今日/本月补签次数没到上限时才允许补签。 */
+    val canResign: Boolean
+        get() = missedDays > 0 &&
+            (limitDaily <= 0 || resignToday < limitDaily) &&
+            (limitMonthly <= 0 || resignMonth < limitMonthly)
+}
+
+fun parseLunaResignInfo(raw: String): LunaResignInfo {
+    val empty = LunaResignInfo(0, 0, false, 0, 0, 0, 0, 0, 0, 0, "")
+    return try {
+        val obj = JSONObject(raw)
+        val retcode = obj.optInt("retcode", -1)
+        if (retcode != 0) {
+            return empty.copy(message = "retcode=$retcode ${obj.optString("message", "")}".trim())
+        }
+        val d = obj.optJSONObject("data") ?: return empty.copy(message = "无数据")
+        LunaResignInfo(
+            missedDays = d.optInt("sign_cnt_missed", 0),
+            signDays = d.optInt("sign_days", 0),
+            signedToday = d.optBoolean("signed", false),
+            resignToday = d.optInt("resign_cnt_daily", 0),
+            resignMonth = d.optInt("resign_cnt_monthly", 0),
+            limitDaily = d.optInt("resign_limit_daily", 0),
+            limitMonthly = d.optInt("resign_limit_monthly", 0),
+            coinCost = d.optInt("coin_cost", 0),
+            coinCount = d.optInt("coin_cnt", 0),
+            cost = d.optInt("cost", 0),
+            rule = d.optString("rule", "")
+        )
+    } catch (e: Exception) {
+        empty.copy(message = "解析失败")
+    }
+}
+
+// ---------- 米游币（社区任务状态 getUserMissionsState?point_sn=myb） ----------
+
+/**
+ * 社区任务状态里的米游币信息：
+ * - [signedToday] 任务 58（每日签到）是否已领奖，null 表示这次查不到
+ * - [totalPoints] 当前米游币余额
+ * - [todayGot] 今天已经拿到的米游币
+ * - [todayCanGet] 今天还能拿到的米游币
+ */
+data class BbsMissions(
+    val signedToday: Boolean?,
+    val totalPoints: Int,
+    val todayGot: Int,
+    val todayCanGet: Int
+)
+
+fun parseBbsMissions(raw: String): BbsMissions? {
+    return try {
+        val obj = JSONObject(raw)
+        if (obj.optInt("retcode", -1) != 0) return null
+        val d = obj.optJSONObject("data") ?: return null
+        var signed: Boolean? = null
+        d.optJSONArray("states")?.let { states ->
+            signed = false
+            for (i in 0 until states.length()) {
+                val s = states.optJSONObject(i) ?: continue
+                if (s.optInt("mission_id", -1) == 58) {
+                    signed = s.optBoolean("is_get_award", false)
+                    break
+                }
+            }
+        }
+        BbsMissions(
+            signedToday = signed,
+            totalPoints = d.optInt("total_points", 0),
+            todayGot = d.optInt("already_received_points", 0),
+            todayCanGet = d.optInt("can_get_points", 0)
+        )
+    } catch (e: Exception) {
+        null
+    }
+}
+
 fun parseGeetestChallenge(raw: String): GeetestChallenge? {
     return try {
         val obj = JSONObject(raw)

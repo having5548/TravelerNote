@@ -105,7 +105,7 @@
     <string name="settings_github">GitHub</string>
     <string name="github_handle">having5548</string>
     <string name="settings_version">版本</string>
-    <string name="version_name">1.1.12</string>
+    <string name="version_name">1.1.14</string>
     <string name="disclaimer_title">免责声明</string>
 
     <string name="onboarding_title">使用前请仔细阅读</string>
@@ -148,6 +148,22 @@
     <string name="calendar_summary_unsigned">本月已签 %1$d 天 · 今日可领 %2$s ×%3$d</string>
     <string name="calendar_summary_signed">本月已签 %1$d 天 · 今日已领 %2$s ×%3$d</string>
 
+    <!-- 补签（原神每日签到，消耗米游币） -->
+    <string name="resign_action">补签</string>
+    <string name="resign_hint">本月漏签 %1$d 天 · 补一次 %2$d 米游币</string>
+    <string name="resign_hint_free">本月漏签 %1$d 天 · 可用补签卡</string>
+    <string name="resign_hint_no_missed">本月没有漏签，不用补</string>
+    <string name="resign_hint_limit">今日补签次数已用完</string>
+    <string name="resign_hint_unknown">补签信息暂时查不到</string>
+    <string name="resign_doing">正在补签…</string>
+    <string name="resign_confirm_title">补签</string>
+    <string name="resign_confirm_msg">本月漏签 %1$d 天。补签一次消耗 %2$d 米游币（当前 %3$d），确定补吗？</string>
+    <string name="resign_confirm_msg_free">本月漏签 %1$d 天，确定使用补签卡补一次吗？</string>
+    <string name="resign_coin_not_enough">米游币不足：需要 %1$d，当前 %2$d</string>
+    <string name="resign_success">补签成功，奖励会发到游戏内邮件</string>
+    <string name="resign_failed">补签失败：%1$s</string>
+    <string name="resign_already">这次补签没有生效（今日已签或没有可补的日期）</string>
+
     <string name="community_sign">社区签到</string>
     <string name="community_sign_doing">正在社区签到…</string>
     <string name="community_sign_done">社区签到：今日已完成</string>
@@ -157,6 +173,12 @@
     <string name="community_sign_already">社区今日已签到</string>
     <string name="community_sign_failed">社区签到失败</string>
     <string name="community_sign_hint">游戏签到是自动的；社区（论坛）签到需要手动点上面的按钮</string>
+
+    <!-- 米游币（社区签到下方） -->
+    <string name="miyou_coin">米游币</string>
+    <string name="miyou_coin_unknown">暂时查不到，稍后重试</string>
+    <string name="miyou_coin_today">今日已得 %1$d · 还能得 %2$d</string>
+    <string name="miyou_coin_done">今日任务已全部完成</string>
 
     <string name="tab_tools">旅行工具</string>
     <string name="tools_hint">米游社官方网页工具入口，点击用浏览器打开。战绩、祈愿、通行证等页面需要先在浏览器里登录米游社账号。</string>
@@ -178,6 +200,8 @@
     <string name="news_status_ongoing">进行中</string>
     <string name="news_status_upcoming">即将开始</string>
     <string name="news_status_finished">已结束</string>
+    <string name="news_expand_more">展开剩余 %1$d 条</string>
+    <string name="news_collapse">收起</string>
     <string name="news_time_range">%1$s ~ %2$s</string>
     <string name="news_left_days">剩余 %1$d 天</string>
     <string name="news_left_hours">剩余 %1$d 小时</string>
@@ -311,6 +335,14 @@
     <string name="watch_battery_unknown">电量未知</string>
     <string name="watch_charging_suffix">（充电中）</string>
     <string name="watch_keepalive_help">保活失败时的排查顺序：① 允许后台运行（忽略电池优化）② 系统自启动/省电策略设为无限制 ③ 通知权限 ④ 需要更稳就装 Shizuku 选守护模式。</string>
+
+    <!-- 保活风险提示（没加白名单时显示在页面顶部） -->
+    <string name="watch_warn_title">保活还没生效：清后台会掉线</string>
+    <string name="watch_warn_text">系统还没允许本应用后台运行，从最近任务划掉后服务会被杀、手表就显示未连接。请先「允许后台运行」，再到系统设置里打开自启动、把省电策略设为无限制。</string>
+    <string name="watch_warn_action">允许后台运行</string>
+    <string name="watch_service_no_whitelist">%1$s（未加白名单，清后台可能掉）</string>
+    <string name="watch_tile_connected">已连接手表</string>
+    <string name="watch_tile_waiting">等手表连接</string>
 
     <!-- 保活服务/磁贴 -->
     <string name="watch_service_title">手表同步</string>

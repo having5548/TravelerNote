@@ -74,17 +74,13 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- 手表同步二级页 -->
-        <activity
-            android:name=".ui.WatchSyncActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
-
         <!-- 手表同步保活：前台服务 + 快捷磁贴 + 闹钟看门狗 -->
+        <!-- 手表同步页已改成主界面内的 Fragment（WatchSyncFragment），不再需要独立 Activity -->
         <service
             android:name=".watch.WatchSyncService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
 
         <service
             android:name=".watch.WatchSyncTileService"

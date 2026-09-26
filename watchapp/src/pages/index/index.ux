@@ -1,72 +1,92 @@
 <template>
-  <div class="page column" onswipe="onSwipe">
-    <div class="top row">
-      <div class="statusWrap row">
-        <div class="dot" style="background-color: {{statusColor}}"></div>
-        <text class="status">{{ statusText }}</text>
-      </div>
-      <div class="actions row">
-        <!-- 刷新：立刻向手机端拉一次最新数据 -->
+  <!--
+    页面根节点与内容层都**不绑任何手势**：账号切换已经搬到手表设置页，
+    绑了手势反而容易被框架当成"可拖动/可滚动"的页面（横竖滑都会把内容推走且不回弹）。
+  -->
+  <div class="page column">
+    <div class="content column">
+      <div class="top row">
+        <div class="statusWrap row">
+          <div class="dot" style="background-color: {{statusColor}}"></div>
+          <text class="status">{{ statusText }}</text>
+        </div>
+        <!-- 刷新：立刻向手机端拉一次最新数据；设置：进手表设置二级页。
+             两个按钮同样大小、间距 20px，位置固定（状态文字变长也不会挤动它们） -->
         <image class="iconBtn" src="/common/icons/refresh.png" onclick="onRefreshTap" />
-        <!-- 设置：进入手表设置二级页 -->
         <image class="iconBtn" src="/common/icons/settings.png" onclick="openSettings" />
       </div>
-    </div>
 
-    <div class="card column" if="{{ hasNote }}">
-      <div class="row item" for="{{ metrics }}" tid="key">
-        <div class="iconBg" style="background-color: {{$item.color}}">
-          <image class="iconImg" src="/common/icons/{{$item.icon}}.png" />
+      <div class="card column" if="{{ hasNote }}">
+        <div class="row item" for="{{ metrics }}" tid="key">
+          <div class="iconBg" style="background-color: {{$item.color}}">
+            <image class="iconImg" src="/common/icons/{{$item.icon}}.png" />
+          </div>
+          <div class="mid column">
+            <text class="label">{{$item.label}}</text>
+            <text class="value">{{$item.value}}</text>
+          </div>
+          <text class="extra" style="color: {{$item.color}}" if="{{$item.extra}}">{{$item.extra}}</text>
         </div>
-        <div class="mid column">
-          <text class="label">{{$item.label}}</text>
-          <text class="value">{{$item.value}}</text>
+        <!-- 多账号：只显示"当前账号 + 位置"（切换账号在手表设置页里） -->
+        <div class="acct row" if="{{ showSwitcher }}">
+          <text class="acctName">{{ accountText }}</text>
         </div>
-        <text class="extra" style="color: {{$item.color}}" if="{{$item.extra}}">{{$item.extra}}</text>
+        <text class="updated" else>{{ updatedText }}</text>
       </div>
-      <!-- 多账号：这一行只显示"当前账号 + 位置"，切换靠上下滑动 -->
-      <div class="acct row" if="{{ showSwitcher }}">
-        <image class="acctIcon" src="/common/icons/swap.png" />
-        <text class="acctName">{{ accountText }}</text>
-      </div>
-      <text class="updated" else>{{ updatedText }}</text>
-    </div>
 
-    <div class="empty column" else>
-      <text class="hint">{{ emptyText }}</text>
-      <text class="hint-sub" if="{{ !showSwitcher }}">点右上角刷新，或等手机端连接后自动获取</text>
-      <div class="acct row" if="{{ showSwitcher }}">
-        <image class="acctIcon" src="/common/icons/swap.png" />
-        <text class="acctName">{{ accountText }}</text>
+      <div class="empty column" else>
+        <text class="hint">{{ emptyText }}</text>
+        <text class="hint-sub" if="{{ !showSwitcher }}">点右上角刷新，或等手机端连接后自动获取</text>
+        <div class="acct row" if="{{ showSwitcher }}">
+          <text class="acctName">{{ accountText }}</text>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style>
+/*
+ * 页面根节点：**既不带 padding、也不写死高度**。
+ * 之前根节点有 padding 时，框架把"可滚动范围"算成 视口+padding，
+ * 页面就变成可横/竖拖动的容器：滑一下内容被推走（横向正好等于水平 padding，
+ * 纵向是 514 高度超出可见区那 82px）且松手不回弹。现在内边距全部交给 .content。
+ * 高度取可见区（设计宽高一致 = 432），内容也压在这一屏里，竖着也拖不动。
+ */
 .page {
   flex-direction: column;
-  width: 432px;
-  height: 514px;
-  padding: 30px 26px 24px;
+  height: 432px;
   background-color: #0d0d0d;
+  overflow: hidden;
 }
 
 .column {
   flex-direction: column;
 }
 
+/* 内容层：手势全都不绑（账号切换在设置页），只负责内边距与纵向布局 */
+.content {
+  flex: 1;
+  flex-direction: column;
+  padding: 30px 26px 12px;
+}
+
 .row {
   flex-direction: row;
 }
 
+/*
+ * 顶栏：状态区**固定宽度**，右边两个按钮才不会被状态文字挤来挤去
+ * （之前用 flex:1 + space-between，Vela 里 flex 没按预期分配空间，
+ *  结果状态文字一变长，两个按钮就左右跑）。
+ */
 .top {
   align-items: center;
-  justify-content: space-between;
   padding: 0px 6px;
 }
 
 .statusWrap {
+  width: 232px;
   align-items: center;
 }
 
@@ -82,15 +102,11 @@
   font-size: 22px;
 }
 
-/* 右上角：刷新 + 设置两个图标按钮 */
-.actions {
-  align-items: center;
-}
-
+/* 刷新 / 设置按钮：两个**同样大小**（46px）、间距 20px，位置固定不随状态文字变化 */
 .iconBtn {
-  width: 36px;
-  height: 36px;
-  margin-left: 14px;
+  width: 46px;
+  height: 46px;
+  margin-left: 20px;
 }
 
 .card {
@@ -103,7 +119,8 @@
 
 .item {
   align-items: center;
-  padding: 17px 0px;
+  /* 17 -> 14：圆屏可见高度只有约 432 设计像素，收紧一点给底部指示点腾位置 */
+  padding: 14px 0px;
 }
 
 .iconBg {
@@ -148,18 +165,11 @@
   padding: 4px 0px 12px;
 }
 
-/* 多账号：只显示当前账号 + 位置，切换靠上下滑动（不额外占纵向空间） */
+/* 多账号：只显示当前账号 + 位置（不再有上下箭头图标，切换账号在设置页里） */
 .acct {
   align-items: center;
   justify-content: center;
   padding: 0px 0px 8px;
-}
-
-.acctIcon {
-  width: 26px;
-  height: 26px;
-  margin-right: 10px;
-  opacity: 0.65;
 }
 
 .acctName {
@@ -224,6 +234,14 @@ const MAX_ACCOUNTS = 5;
 // 数据时效：距上次同步超过 4 小时，打开应用/重连时才自动向手机端拉一次
 const AUTO_SYNC_MS = 4 * 60 * 60 * 1000;
 
+/**
+ * 该账号没有这一项数据时的占位行：行数与行高和正常行完全一样，只把值写成 —，
+ * 这样切账号时卡片高度不变（界面不会跳）。
+ */
+function PLACEHOLDER(key, icon, color, label) {
+  return { key: key, icon: icon, color: color, label: label, value: "—", extra: "" };
+}
+
 export default {
   private: {
     statusText: "连接中…",
@@ -234,7 +252,7 @@ export default {
     emptyText: "等待手机同步…",
     versionName: versionName,
     buildTime: buildTime,
-    // ---- 多账号（最多 5 个，与手机端同步；上下滑动切换） ----
+    // ---- 多账号（最多 5 个，与手机端同步；切换账号在手表设置页里） ----
     accounts: [],
     accountCount: 0,
     accountText: "",
@@ -260,8 +278,6 @@ export default {
     this.selId = "";
     this.defaultId = "";
     this.defaultFollow = true;
-    // 用户是否手动切过账号（手动切过就不再被"上次保存的选择"校正覆盖）
-    this.userPicked = false;
     // 连接状态（刷新按钮要用）与"本次打开是否已经自动拉过"
     this.online = false;
     this.autoRequested = false;
@@ -297,13 +313,17 @@ export default {
       },
       fail: () => {}
     });
-    // 启动时若无实时数据，先展示上次同步的缓存（先恢复默认账号/上次选中的账号）
+    // 启动时若无实时数据，先展示上次同步的缓存（先恢复设置页选的账号）
     this.loadPrefs();
   },
 
-  /** 从设置页返回时，可能改过"默认显示用户"：重读并按需切换。 */
+  /**
+   * 从设置页返回时，重读设置页写的「当前账号」并**立刻切过去**。
+   * 以前的 bug：这里只重读了默认账号、却拿旧的 selId 去套，于是在设置里换了账号，
+   * 回到便签页显示的还是老账号。现在整份 prefs 重读一遍再应用。
+   */
   onShow() {
-    this.refreshDefaultId();
+    this.loadPrefs();
   },
 
   setOnline() {
@@ -316,7 +336,7 @@ export default {
   goOffline(text) {
     this.online = false;
     this.statusColor = this.rawMsg ? C.offline : C.error;
-    this.statusText = this.rawMsg ? "离线 · 显示缓存数据" : text;
+    this.statusText = this.rawMsg ? "离线 · 缓存数据" : text;
     this.startLiveTimer();
   },
 
@@ -349,33 +369,6 @@ export default {
     router.push({ uri: "/pages/settings" });
   },
 
-  /** 只重读设置页写的默认显示用户，并按需切过去。 */
-  refreshDefaultId() {
-    try {
-      file.readText({
-        uri: DEF_URI,
-        success: (data) => {
-          let id = "";
-          let follow = true;
-          if (data && data.text) {
-            try {
-              const d = JSON.parse(data.text);
-              if (d && d.id) {
-                id = d.id;
-                follow = false;
-              }
-            } catch (e) {}
-          }
-          if (id === this.defaultId && follow === this.defaultFollow) return;
-          this.defaultId = id;
-          this.defaultFollow = follow;
-          if (!follow && id) this.applySavedSelection();
-        },
-        fail: () => {}
-      });
-    } catch (e) {}
-  },
-
   handleMessage(raw) {
     let msg = null;
     try {
@@ -386,7 +379,8 @@ export default {
     if (!msg) return;
     if (msg.type === "dailyNote") {
       this.statusColor = C.online;
-      this.statusText = "已同步 · " + (msg.date || "");
+      // 顶栏状态区宽度固定，文案要短（长文案会被裁掉）
+      this.statusText = "已同步 " + String(msg.date || "").slice(5);
       this.saveCache(msg);
       this.renderNote(msg);
     } else if (msg.action === "getStorageInfo") {
@@ -440,96 +434,73 @@ export default {
     const m = this.accounts[this.selIndex] || {};
     // 本地树脂推算与离线判断都基于"当前选中的账号"
     this.rawMsg = m;
+    // 固定四行：哪一项没数据也占位（值显示 —）。
+    // 之前是按数据动态增减行，账号之间「洞天宝钱/本月签到」有无不同 -> 卡片忽高忽低，
+    // 上下滑切账号时整块 UI 会跳，现在行数与行高恒定，界面钉死不跟着动。
     const list = [];
-    if (m.resin) {
-      list.push({
-        key: "resin",
-        icon: "resin",
-        color: C.resin,
-        label: "原粹树脂",
-        value: m.resin.cur + " / " + m.resin.max,
-        extra: ""
-      });
-    }
-    if (m.coin) {
-      list.push({
-        key: "coin",
-        icon: "home_coin",
-        color: C.coin,
-        label: "洞天宝钱",
-        value: m.coin.cur + " / " + m.coin.max,
-        extra: ""
-      });
-    }
-    if (m.task) {
-      list.push({
-        key: "task",
-        icon: "task",
-        color: C.task,
-        label: "每日委托",
-        value: m.task.cur + " / " + m.task.total,
-        extra: m.task.cur >= m.task.total && m.task.total > 0 ? "已完成" : ""
-      });
-    }
-    if (m.sign) {
-      list.push({
-        key: "sign",
-        icon: "sign",
-        color: C.sign,
-        label: "本月签到",
-        value: m.sign.days + " 天",
-        extra: m.sign.today ? "今日已签" : "今日未签"
-      });
-    }
+    list.push(
+      m.resin
+        ? {
+            key: "resin",
+            icon: "resin",
+            color: C.resin,
+            label: "原粹树脂",
+            value: m.resin.cur + " / " + m.resin.max,
+            extra: ""
+          }
+        : PLACEHOLDER("resin", "resin", C.resin, "原粹树脂")
+    );
+    list.push(
+      m.coin
+        ? {
+            key: "coin",
+            icon: "home_coin",
+            color: C.coin,
+            label: "洞天宝钱",
+            value: m.coin.cur + " / " + m.coin.max,
+            extra: ""
+          }
+        : PLACEHOLDER("coin", "home_coin", C.coin, "洞天宝钱")
+    );
+    list.push(
+      m.task
+        ? {
+            key: "task",
+            icon: "task",
+            color: C.task,
+            label: "每日委托",
+            value: m.task.cur + " / " + m.task.total,
+            extra: m.task.cur >= m.task.total && m.task.total > 0 ? "已完成" : ""
+          }
+        : PLACEHOLDER("task", "task", C.task, "每日委托")
+    );
+    list.push(
+      m.sign
+        ? {
+            key: "sign",
+            icon: "sign",
+            color: C.sign,
+            label: "本月签到",
+            value: m.sign.days + " 天",
+            extra: m.sign.today ? "今日已签" : "今日未签"
+          }
+        : PLACEHOLDER("sign", "sign", C.sign, "本月签到")
+    );
+    const has = !!(m.resin || m.coin || m.task || m.sign);
     this.metrics = list;
-    this.hasNote = list.length > 0;
+    this.hasNote = has;
     this.emptyText = m.error || (this.payload && this.payload.noteError) || "暂无便签数据";
     this.selId = m.id || "";
     this.accountText = (m.label || "账号") + " " + (this.selIndex + 1) + "/" + this.accountCount;
     this.refreshLiveResin();
   },
 
-  // ---------------- 账号切换（上下滑动） ----------------
-
   /**
-   * 上下滑动切换账号：上滑 = 下一个，下滑 = 上一个。
-   * 切换结果只更新底部那一行（不弹窗，避免遮挡数据）。
-   */
-  onSwipe(evt) {
-    const dir = evt && evt.direction;
-    if (dir === "up") {
-      this.nextAccount();
-    } else if (dir === "down") {
-      this.prevAccount();
-    }
-  },
-
-  nextAccount() {
-    this.switchTo(this.selIndex + 1);
-  },
-
-  prevAccount() {
-    this.switchTo(this.selIndex - 1);
-  },
-
-  /** 环形切换；选中结果立刻落盘，重启或重新同步后仍停在同一个账号。 */
-  switchTo(pos) {
-    const n = this.accounts.length;
-    if (n <= 1) return;
-    const idx = ((pos % n) + n) % n;
-    if (idx === this.selIndex) return;
-    this.userPicked = true;
-    this.selIndex = idx;
-    this.saveSelection(this.accounts[idx].id);
-    this.applyAccount();
-  },
-
-  /**
-   * 选择文件读完后校正一次：若当前显示的不是上次保存的账号（例如手机推送先于文件读完到达），
-   * 就切回去。用户已经手动切过（userPicked）则不干预。
+   * 选择文件读完后校正一次：若当前显示的不是保存的账号（例如手机推送先于文件读完到达），
+   * 就切过去。切换账号现在只有设置页一个入口，所以这里一律以文件为准。
    */
   applySavedSelection() {
-    if (!this.selId || this.userPicked || this.accounts.length <= 1) return;
+    if (!this.selId || this.accounts.length <= 1) return;
     for (let i = 0; i < this.accounts.length; i++) {
       if (this.accounts[i].id === this.selId && i !== this.selIndex) {
         this.selIndex = i;
@@ -627,7 +598,7 @@ export default {
             const msg = JSON.parse(data.text);
             if (msg && msg.type === "dailyNote") {
               this.statusColor = C.offline;
-              this.statusText = "离线 · 显示缓存数据";
+              this.statusText = "离线 · 缓存数据";
               this.renderNote(msg);
             }
           } catch (e) {}
@@ -637,34 +608,9 @@ export default {
     } catch (e) {}
   },
 
-  /** 选中的账号 id 单独落盘（数据缓存整包覆盖，选择要独立保留）。 */
-  saveSelection(id) {
-    if (!id) return;
-    try {
-      file.writeText({
-        uri: SEL_URI,
-        text: JSON.stringify({ id: id }),
-        success: () => {},
-        fail: () => {}
-      });
-    } catch (e) {}
-  },
-
-  /** 默认显示用户（空字符串 = 跟随手机当前账号）。 */
-  saveDefault(id) {
-    try {
-      file.writeText({
-        uri: DEF_URI,
-        text: JSON.stringify(id ? { id: id } : { follow: true }),
-        success: () => {},
-        fail: () => {}
-      });
-    } catch (e) {}
-  },
-
   /**
-   * 启动时读设置：先读「默认显示用户」，再读「上次选中」，最后读数据缓存。
-   * 默认显示用户优先——它就是用来决定"打开手表应用时先看哪个号"的。
+   * 启动/返回本页时读设置：先读「当前账号」（设置页写的 note_default.json），
+   * 再读上次选中（note_sel.json），最后读数据缓存。
    */
   loadPrefs() {
     try {
@@ -691,23 +637,26 @@ export default {
     }
   },
 
-  /** 恢复上次选中的账号（有默认显示用户时以默认为准），再读数据缓存。 */
+  /** 读「设置页选的账号」（note_sel.json）：指定了就用它，选"跟随手机"就交回给手机当前账号。 */
   loadSelection() {
     try {
       file.readText({
         uri: SEL_URI,
         success: (data) => {
+          let picked = "";
           if (data && data.text) {
             try {
               const s = JSON.parse(data.text);
-              if (s && s.id) this.selId = s.id;
+              if (s && s.id) picked = s.id;
             } catch (e) {}
           }
+          this.selId = picked;
           if (!this.defaultFollow && this.defaultId) this.selId = this.defaultId;
           this.applySavedSelection();
           this.loadCache();
         },
         fail: () => {
+          this.selId = "";
           if (!this.defaultFollow && this.defaultId) this.selId = this.defaultId;
           this.loadCache();
         }

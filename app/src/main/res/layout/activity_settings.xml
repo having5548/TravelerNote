@@ -423,15 +423,7 @@
                             android:textSize="12sp" />
                     </LinearLayout>
 
-                    <!-- 同步开关直接放在设置列表里，不必进二级页 -->
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/watchSyncSwitch"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:clickable="true"
-                        android:focusable="false" />
-
+                    <!-- 同步开关已挪到「手表同步」页顶部，这里只保留入口 -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"

@@ -3,20 +3,16 @@
 
 package com.traveler.miyou.ui
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -29,14 +25,9 @@ import com.traveler.miyou.store.AccountRefresher
 import com.traveler.miyou.store.AccountStore
 import com.traveler.miyou.store.CookieStore
 import com.traveler.miyou.store.SettingsStore
-import com.traveler.miyou.watch.WatchSyncService
 import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
-
-    private companion object {
-        const val REQUEST_WATCH_NOTIFICATIONS = 4401
-    }
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var settings: SettingsStore
@@ -64,10 +55,10 @@ class SettingsActivity : AppCompatActivity() {
         setupBackground()
         setupBackgroundEffect()
         setupWatchSync()
-        // 有背景图时给工具栏加渐变遮罩，否则返回箭头/标题看不清
-        ThemeHelper.applyToolbarScrim(this)
-        // 设置页也应用同一份背景与材质，避免只有主界面"全屏"、进来就断掉
-        BackgroundEngine.apply(this)
+        // 设置页也应用同一份背景与材质，避免只有主界面"全屏"、进来就断掉；
+        // 背景就绪后按它的明暗给工具栏（返回箭头/标题）选对比色
+        BackgroundEngine.apply(this) { ThemeHelper.applyToolbarContent(this) }
+        ThemeHelper.applyToolbarContent(this)
 
         binding.toolbar.setNavigationOnClickListener { finish() }
 
@@ -202,6 +193,8 @@ class SettingsActivity : AppCompatActivity() {
                 settings.backgroundSource = index
                 // 作废该来源旧缓存，返回主界面时立即拉新图（实时生效）
                 BackgroundEngine.invalidate(this, index)
+                // 当前这一页也立刻跟着变，不用退出去才看到效果
+                BackgroundEngine.apply(this) { ThemeHelper.applyToolbarContent(this) }
             }
         }
     }
@@ -224,8 +217,12 @@ class SettingsActivity : AppCompatActivity() {
         binding.effectGroup.setOnCheckedChangeListener { _, checkedId ->
             val index = radios.indexOfFirst { it == checkedId }
             if (index >= 0 && settings.bgEffect != index) {
+                val hadGlass = settings.bgEffect > 0
                 settings.bgEffect = index
                 updateEffectVisibility()
+                // 材质开关会切换 surface 是否半透明，而主题叠加只能加不能撤 ——
+                // 跨过"无材质 ↔ 有材质"这条线时重建一次，省得用户以为没生效
+                if (hadGlass != (index > 0)) restartApp()
             }
         }
         binding.frostSlider.addOnChangeListener { _, value, fromUser ->
@@ -244,39 +241,15 @@ class SettingsActivity : AppCompatActivity() {
     // ---------------- 手表同步 ----------------
 
     /**
-     * 设置列表里的手表同步行：右侧开关直接开/关后台同步，不必进二级页；
-     * 点整行仍进二级页看连接状态与保活方式。
+     * 设置列表里的手表同步行：**只作为入口**（同步开关已挪到手表同步页顶部，避免两处重复），
+     * 点整行回到主界面并切到「手表同步」页签。
      */
     private fun setupWatchSync() {
-        binding.watchSyncSwitch.isChecked = settings.watchSyncEnabled
         binding.watchEntryRow.setOnClickListener {
-            startActivity(Intent(this, WatchSyncActivity::class.java))
-        }
-        binding.watchSyncSwitch.setOnCheckedChangeListener { _, checked ->
-            settings.watchSyncEnabled = checked
-            if (checked) {
-                ensureWatchNotificationPermission()
-                runCatching { WatchSyncService.start(applicationContext) }
-            } else {
-                WatchSyncService.stop(applicationContext)
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // 二级页里可能改过开关，回来时对齐一次
-        binding.watchSyncSwitch.isChecked = settings.watchSyncEnabled
-    }
-
-    /** 保活通知在 Android 13+ 需要通知权限，开关一开就顺手申请。 */
-    private fun ensureWatchNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_WATCH_NOTIFICATIONS
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_PAGE, MainActivity.PAGE_WATCH)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
         }
     }

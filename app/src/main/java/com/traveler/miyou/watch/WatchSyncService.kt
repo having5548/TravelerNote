@@ -18,7 +18,6 @@ import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.traveler.miyou.R
 import com.traveler.miyou.store.SettingsStore
-import com.traveler.miyou.ui.WatchSyncActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,6 +39,9 @@ class WatchSyncService : Service() {
 
     companion object {
         const val ACTION_STOP = "com.traveler.miyou.watch.action.STOP"
+
+        /** 让正在运行的服务立刻刷一次连接状态（磁贴/通知用到）。 */
+        const val ACTION_REFRESH = "com.traveler.miyou.watch.action.REFRESH"
         const val NOTIFICATION_ID = 42
         private const val CHANNEL_SILENT = "watch_sync_silent"
         private const val CHANNEL_STATUS = "watch_sync_status"
@@ -54,6 +56,22 @@ class WatchSyncService : Service() {
         fun start(context: Context) {
             context.startForegroundService(Intent(context, WatchSyncService::class.java))
         }
+
+        /** 已经在跑的服务：让它立刻刷一次状态（没在跑就什么都不做，别去后台起服务）。 */
+        fun requestRefresh(context: Context) {
+            if (!running) return
+            runCatching {
+                context.startService(
+                    Intent(context, WatchSyncService::class.java).setAction(ACTION_REFRESH)
+                )
+            }
+        }
+
+        /** 是否已被系统允许后台运行（忽略电池优化）。没加白名单时清后台很容易被杀。 */
+        fun ignoringBatteryOptimizations(context: Context): Boolean = runCatching {
+            context.getSystemService(android.os.PowerManager::class.java)
+                ?.isIgnoringBatteryOptimizations(context.packageName) == true
+        }.getOrDefault(false)
 
         /** 停止保活服务并取消看门狗闹钟（不改设置项，重启类调用方用）。 */
         fun stop(context: Context) {
@@ -137,6 +155,15 @@ class WatchSyncService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_REFRESH) {
+            // 已经在跑：只刷一次状态（磁贴每次展开时用），不动刷新循环
+            scope.launch {
+                runCatching { WatchNoteSync.refreshStatus(applicationContext) }
+                updateNotification()
+            }
+            return START_STICKY
+        }
+
         createChannels(this)
         try {
             startForeground(
@@ -163,6 +190,19 @@ class WatchSyncService : Service() {
         return START_STICKY
     }
 
+    /**
+     * 被从最近任务里划掉时（用户"清后台"）：国产 ROM 往往会顺手把前台服务一起杀掉，
+     * 这里立刻重排看门狗闹钟并尝试把服务拉回来。没加白名单时不保证成功，
+     * 但至少闹钟还在 —— 到点由 WatchdogReceiver（必要时走 Shizuku）再拉一次。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (::settings.isInitialized && settings.watchSyncEnabled) {
+            scheduleWatchdog(this, settings.watchRefreshMinutes)
+            runCatching { start(this) }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     private suspend fun refreshLoop() {
         // scope 在 onDestroy 里 cancel，delay 会抛 CancellationException 退出，这里只查业务条件
         while (running && settings.watchSyncEnabled) {
@@ -176,7 +216,7 @@ class WatchSyncService : Service() {
 
     private fun updateNotification() {
         val st = WatchSyncState.status.value
-        val text = when {
+        val base = when {
             // 断连：进入准备状态，等手表回来
             st.preparing -> getString(R.string.watch_service_preparing)
             !st.connected -> getString(R.string.watch_service_disconnected)
@@ -186,6 +226,12 @@ class WatchSyncService : Service() {
             )
             else -> getString(R.string.watch_service_connected_fmt, st.deviceName ?: "")
         }
+        // 没加白名单时把风险直接写在通知里：清后台被杀多半就是这个原因
+        val text = if (ignoringBatteryOptimizations(this)) {
+            base
+        } else {
+            getString(R.string.watch_service_no_whitelist, base)
+        }
         runCatching {
             getSystemService(NotificationManager::class.java)
                 ?.notify(NOTIFICATION_ID, buildNotification(text))
@@ -194,8 +240,15 @@ class WatchSyncService : Service() {
 
     private fun buildNotification(text: String): Notification {
         val silent = settings.watchKeepAliveMode != 1
+        // 点通知回到主界面的「手表同步」页（页内内容，不再是独立 Activity）
         val contentIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, WatchSyncActivity::class.java),
+            this, 0,
+            Intent(this, com.traveler.miyou.ui.MainActivity::class.java)
+                .putExtra(
+                    com.traveler.miyou.ui.MainActivity.EXTRA_PAGE,
+                    com.traveler.miyou.ui.MainActivity.PAGE_WATCH
+                )
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val stopIntent = PendingIntent.getService(

@@ -31,12 +31,18 @@ sealed class HomeItem {
         val tint: Int
     ) : HomeItem()
 
-    /** 旅行日历：本月签到每天能领什么。 */
+    /** 旅行日历：本月签到每天能领什么（附补签入口）。 */
     data class Calendar(
         val awards: List<LunaAward>,
         val signedDays: Int,
         val signedToday: Boolean,
-        val summary: String
+        val summary: String,
+        /** 本月漏签天数；-1 表示没查到 */
+        val missedDays: Int = -1,
+        /** 补签按钮旁边的说明文字 */
+        val resignHint: String = "",
+        /** 补签按钮是否可点 */
+        val resignEnabled: Boolean = false
     ) : HomeItem()
 
     data object Footer : HomeItem()
@@ -44,7 +50,8 @@ sealed class HomeItem {
 
 class NoteAdapter(
     private val onRefresh: () -> Unit,
-    private val onCommunitySign: () -> Unit
+    private val onCommunitySign: () -> Unit,
+    private val onResign: () -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val items = mutableListOf<HomeItem>()
@@ -53,6 +60,8 @@ class NoteAdapter(
 
     private var communityStatus: String = ""
     private var communityEnabled: Boolean = true
+    private var coinValue: String = "--"
+    private var coinStatus: String = ""
 
     fun submit(newItems: List<HomeItem>) {
         items.clear()
@@ -75,6 +84,16 @@ class NoteAdapter(
         }
     }
 
+    /** 米游币：数量 + 今日收支说明。 */
+    fun setCommunityCoin(value: String, status: String) {
+        coinValue = value
+        coinStatus = status
+        headerBinding?.let {
+            it.coinValue.text = value
+            it.coinStatus.text = status
+        }
+    }
+
     override fun getItemViewType(position: Int): Int = when (items[position]) {
         is HomeItem.Header -> TYPE_HEADER
         is HomeItem.Note -> TYPE_NOTE
@@ -87,7 +106,7 @@ class NoteAdapter(
         return when (viewType) {
             TYPE_HEADER -> HeaderVH(ItemHeaderBinding.inflate(inflater, parent, false))
             TYPE_NOTE -> NoteVH(ItemNoteBinding.inflate(inflater, parent, false))
-            TYPE_CALENDAR -> CalendarVH(ItemCalendarBinding.inflate(inflater, parent, false))
+            TYPE_CALENDAR -> CalendarVH(ItemCalendarBinding.inflate(inflater, parent, false), onResign)
             else -> FooterVH(ItemFooterBinding.inflate(inflater, parent, false))
         }
     }
@@ -104,6 +123,9 @@ class NoteAdapter(
                     vh.binding.communityStatus.text = communityStatus
                 }
                 vh.binding.communityBtn.isEnabled = communityEnabled
+                // 米游币（社区签到下方）
+                vh.binding.coinValue.text = coinValue
+                vh.binding.coinStatus.text = coinStatus
             }
             is HomeItem.Note -> (holder as NoteVH).bind(item)
             is HomeItem.Calendar -> (holder as CalendarVH).bind(item)
@@ -130,13 +152,22 @@ class NoteAdapter(
         }
     }
 
-    /** 签到日历：7 列等宽格子，已领取 / 今日 / 未领取三种状态。 */
-    class CalendarVH(val binding: ItemCalendarBinding) : RecyclerView.ViewHolder(binding.root) {
+    /** 签到日历：7 列等宽格子，已领取 / 今日 / 未领取三种状态；底部带补签入口。 */
+    class CalendarVH(
+        val binding: ItemCalendarBinding,
+        private val onResign: () -> Unit
+    ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: HomeItem.Calendar) {
             val context = binding.root.context
             binding.calendarSummary.text = item.summary
             binding.calendarGrid.removeAllViews()
+
+            // 补签入口：漏签天数 + 消耗说明；不可补时按钮置灰
+            binding.resignHint.text = item.resignHint
+            binding.resignHint.visibility = if (item.resignHint.isBlank()) View.GONE else View.VISIBLE
+            binding.resignBtn.isEnabled = item.resignEnabled
+            binding.resignBtn.setOnClickListener { if (item.resignEnabled) onResign() }
 
             if (item.awards.isEmpty()) {
                 binding.calendarCaption.visibility = View.GONE

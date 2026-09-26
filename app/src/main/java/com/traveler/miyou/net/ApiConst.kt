@@ -44,6 +44,13 @@ object ApiConst {
     // 端点
     /** 社区（论坛）签到：只在用户手动点击时调用。 */
     val SIGN_IN_URL: String get() = "$BBS_API/apihub/app/api/signIn"
+
+    /** 米游币任务状态（今日是否已签 + 米游币余额），只读。 */
+    val BBS_MISSIONS_URL: String get() = "$BBS_API/apihub/wapi/getUserMissionsState"
+
+    /** 原神每日签到的补签：先查 resign_info（漏签天数/消耗），再 POST resign 补签（花米游币）。 */
+    val LUNA_RESIGN_INFO_URL: String get() = "$TAKUMI_API/event/luna/resign_info"
+    val LUNA_RESIGN_URL: String get() = "$TAKUMI_API/event/luna/resign"
     val GAME_ROLES_URL: String get() = "$TAKUMI_API/binding/api/getUserGameRolesByCookie"
     val MULTI_TOKEN_URL: String get() = "$TAKUMI_API/auth/api/getMultiTokenByLoginTicket"
     val COOKIE_TOKEN_URL: String get() = "$PASSPORT_API/account/auth/api/getCookieAccountInfoBySToken"
@@ -80,14 +87,18 @@ object ApiConst {
     /** 游戏公告：与米哈游启动器同源，无需登录、无需 DS。 */
     val ANN_API: String = d("aHR0cHM6Ly9oazRlLWFubi1hcGkubWlob3lvLmNvbQ==")
 
-    fun annListUrl(region: String): String =
-        "$ANN_API/common/hk4e_cn/announcement/api/getAnnList?" + annQuery(region)
+    /**
+     * 公告接口的 platform 参数。实测（2026-09）：`android` / `ios` 返回的是**空列表**，
+     * 只有 `pc` 有数据，所以固定用 pc（保留参数是为了万一以后移动端也要单独取）。
+     */
+    fun annListUrl(region: String, platform: String = "pc"): String =
+        "$ANN_API/common/hk4e_cn/announcement/api/getAnnList?" + annQuery(region, platform)
 
-    fun annContentUrl(region: String): String =
-        "$ANN_API/common/hk4e_cn/announcement/api/getAnnContent?" + annQuery(region)
+    fun annContentUrl(region: String, platform: String = "pc"): String =
+        "$ANN_API/common/hk4e_cn/announcement/api/getAnnContent?" + annQuery(region, platform)
 
-    private fun annQuery(region: String): String =
-        "game=hk4e&game_biz=hk4e_cn&lang=zh-cn&bundle_id=hk4e_cn&platform=pc" +
+    private fun annQuery(region: String, platform: String): String =
+        "game=hk4e&game_biz=hk4e_cn&lang=zh-cn&bundle_id=hk4e_cn&platform=$platform" +
             "&region=$region&level=55&uid=100000000"
 
     // 米游社官方 B 站账号动态（公开接口，无需登录）

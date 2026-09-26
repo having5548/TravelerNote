@@ -141,7 +141,13 @@ fun parseAnnouncementContent(raw: String): Map<Int, String> {
     }
 }
 
-/** 拉取公告列表；正文按需再取（见 [fetchAnnouncementContents]），避免每次进页签都下 200 KB HTML。 */
+/**
+ * 拉取公告列表。
+ *
+ * 实测（2026-09）：`platform=android/ios` 在这个接口上返回的是**空列表**（只有 `pc` 有数据），
+ * 所以不做多平台合并，只取 pc —— 之前"游戏公告获取不全"的真正原因是**界面侧写死只显示前 12 条**，
+ * 而活动公告一组就有十几条，后面的分组被整体挤掉了（见 MainActivity.renderNotices）。
+ */
 fun fetchAnnouncements(region: String): AnnouncementResult {
     return try {
         val listResp = Http.get(ApiConst.annListUrl(region), announcementHeaders())

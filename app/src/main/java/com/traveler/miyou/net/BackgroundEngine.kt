@@ -43,6 +43,76 @@ object BackgroundEngine {
 
     private var lastAppliedKey: String? = null
 
+    /** 正在下载/处理中的 key：避免重复下载，但失败后必须清掉，否则再也不会重试。 */
+    @Volatile
+    private var inFlightKey: String? = null
+
+    /** 已经自动补过重试的 key（每个 key 只补一次，避免网络不通时无限重试）。 */
+    private val retriedKeys =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /**
+     * 顶栏那一条背后的背景是深色吗？（null = 还没算出来，调用方按主题明暗兜底）
+     * 右上角设置图标与标题用它来选对比色：以前图标是矢量里写死的白色，浅色壁纸下完全看不见。
+     */
+    @Volatile
+    var toolbarOnDark: Boolean? = null
+        private set
+
+    fun isNight(context: Context): Boolean =
+        (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+
+    /** 主题强调色（M3 colorPrimary）。 */
+    private fun accentColor(context: Context): Int {
+        val tv = android.util.TypedValue()
+        val ok = context.theme.resolveAttribute(
+            com.google.android.material.R.attr.colorPrimary, tv, true
+        )
+        return if (ok) tv.data else 0xFF5B6CF0.toInt()
+    }
+
+    private fun blend(base: Int, tint: Int, ratio: Float): Int {
+        fun mix(a: Int, b: Int) = (a + (b - a) * ratio).toInt().coerceIn(0, 255)
+        return Color.rgb(
+            mix(Color.red(base), Color.red(tint)),
+            mix(Color.green(base), Color.green(tint)),
+            mix(Color.blue(base), Color.blue(tint))
+        )
+    }
+
+    /**
+     * 无背景（source = 0）时的纯色底：**按主题色混合出来的底色**，不再是纯白。
+     * 纯白配深色卡片/半透明材质很割裂，而且顶栏白图标在纯白底上根本看不见。
+     */
+    fun noBackgroundColor(context: Context): Int {
+        val night = isNight(context)
+        val base = if (night) 0xFF12141C.toInt() else 0xFFF7F8FC.toInt()
+        return blend(base, accentColor(context), if (night) 0.20f else 0.10f)
+    }
+
+    /** 顶栏那一条（上部约 1/10）的平均亮度是否偏暗。 */
+    private fun topIsDark(src: Bitmap): Boolean {
+        val h = (src.height * 0.10f).toInt().coerceAtLeast(1)
+        val stepX = (src.width / 40).coerceAtLeast(1)
+        val stepY = (h / 10).coerceAtLeast(1)
+        var sum = 0.0
+        var n = 0
+        var y = 0
+        while (y < h) {
+            var x = 0
+            while (x < src.width) {
+                val c = src.getPixel(x, y)
+                sum += 0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)
+                n++
+                x += stepX
+            }
+            y += stepY
+        }
+        if (n == 0) return false
+        return (sum / n) < 140.0
+    }
+
     private fun cacheFile(context: Context, source: Int): File =
         File(context.filesDir, "bgv${CACHE_VERSION}_$source.bin")
 
@@ -162,19 +232,29 @@ object BackgroundEngine {
         return fog(subtleBlur(src, lv), lv * 12, night)
     }
 
-    private fun isNight(context: Context): Boolean =
-        (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-
-    /** 异步把背景应用到某个 Activity 的窗口（CenterCrop + 可选材质）。 */
-    fun apply(activity: Activity) {
+    /**
+     * 异步把背景应用到某个 Activity 的窗口（CenterCrop + 可选材质）。
+     *
+     * [onApplied] 在真正设置好背景之后（UI 线程）回调 —— 顶栏图标/标题要按新背景重新选对比色。
+     *
+     * 注意两点历史 bug：
+     * - 无背景时以前是 `setBackgroundDrawable(null)`，窗口底色变 null 就露出**黑底**，
+     *   配上半透明卡片还会看起来"UI 重叠"；现在改成**主题色纯色底**并强制重绘。
+     * - 以前一进函数就把 key 记上，**下载失败也会被记住**，于是再也不重试、必须杀进程重进；
+     *   现在只有真正应用成功才记 key，失败会清掉在途标记等下次重试。
+     */
+    fun apply(activity: Activity, onApplied: (() -> Unit)? = null) {
         val settings = SettingsStore(activity)
         val source = settings.backgroundSource
         if (source <= 0) {
-            if (lastAppliedKey != null) {
-                lastAppliedKey = null
-                activity.window.setBackgroundDrawable(null)
-            }
+            lastAppliedKey = null
+            inFlightKey = null
+            toolbarOnDark = null
+            activity.window.setBackgroundDrawable(
+                android.graphics.drawable.ColorDrawable(noBackgroundColor(activity))
+            )
+            runCatching { activity.window.decorView.invalidate() }
+            onApplied?.invoke()
             return
         }
 
@@ -182,29 +262,48 @@ object BackgroundEngine {
         val level = if (effect == 2) settings.acrylicLevel else settings.frostLevel
         val night = isNight(activity)
         val key = "$source|$effect|$level|$night"
-        if (key == lastAppliedKey) return
-        lastAppliedKey = key
+        if (key == lastAppliedKey || key == inFlightKey) return
+        inFlightKey = key
 
         val cache = cacheFile(activity, source)
         Thread {
-            try {
-                val bytes = cachedOrDownload(cache, source) ?: return@Thread
-                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@Thread
+            val processed = runCatching {
+                val bytes = cachedOrDownload(cache, source) ?: return@runCatching null
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@runCatching null
                 val wm = activity.getSystemService(Activity.WINDOW_SERVICE) as WindowManager
                 val size = Point()
                 wm.defaultDisplay.getRealSize(size)
                 val cropped = centerCrop(bmp, size.x, size.y)
-                val processed = when (effect) {
+                when (effect) {
                     1 -> frosted(cropped, level, night)
                     2 -> acrylic(cropped, level, night)
                     else -> cropped
                 }
-                activity.runOnUiThread {
-                    if (!activity.isFinishing) {
-                        activity.window.setBackgroundDrawable(BitmapDrawable(activity.resources, processed))
-                    }
+            }.getOrNull()
+
+            if (processed == null) {
+                // 下载/解码失败：清掉在途标记，下一次进前台还会再试；
+                // 同一个 key 再自动补一次（隔 4 秒），省得用户以为"切了背景没反应"
+                inFlightKey = null
+                if (retriedKeys.add(key)) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        runCatching { apply(activity, onApplied) }
+                    }, 4000L)
                 }
-            } catch (_: Exception) {
+                return@Thread
+            }
+
+            activity.runOnUiThread {
+                if (!activity.isFinishing) {
+                    activity.window.setBackgroundDrawable(
+                        BitmapDrawable(activity.resources, processed)
+                    )
+                    runCatching { activity.window.decorView.invalidate() }
+                    lastAppliedKey = key
+                    toolbarOnDark = topIsDark(processed)
+                    onApplied?.invoke()
+                }
+                inFlightKey = null
             }
         }.start()
     }

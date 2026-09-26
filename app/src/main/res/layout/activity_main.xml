@@ -361,6 +361,17 @@
                 android:max="100"
                 android:progress="0" />
         </FrameLayout>
+
+        <!--
+          手表同步：**页内内容**（Fragment）。从底部栏切过来时只切可见性 + 淡入上移动画，
+          不再像以前那样 startActivity 直接拉一个新界面。
+        -->
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/watchPage"
+            android:name="com.traveler.miyou.ui.WatchSyncFragment"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
     </FrameLayout>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView

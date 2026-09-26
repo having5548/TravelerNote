@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 工具栏遮罩（深色主题）：用黑雾，保证白色图标/文字清晰 -->
+<!--
+  工具栏遮罩（深色背景用）：顶栏背后的壁纸偏暗时压一层黑雾，
+  配合白色标题/图标使用（见 ThemeHelper.applyToolbarContent）。
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
         android:angle="270"
         android:endColor="#00000000"
-        android:startColor="#CC000000"
+        android:startColor="#B3000000"
         android:type="linear" />
 </shape>

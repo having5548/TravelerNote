@@ -65,12 +65,15 @@ object MiyouApi {
     }
 
     /**
-     * 查询社区每日打卡任务状态（mission 58 = 今日签到），用于显示"今日是否已签"。
+     * 查询社区每日打卡任务状态（mission 58 = 今日签到）+ **米游币**（余额 / 今日收支）。
      * 这是只读查询，不会触发签到；返回 null 表示查询失败。
+     *
+     * 回包 data 里：`total_points` = 当前米游币，`already_received_points` = 今日已得，
+     * `can_get_points` = 今日还能得（与胡桃工具箱/米游社客户端的口径一致）。
      */
-    fun fetchBbsSignedToday(cookie: String): Boolean? {
+    fun fetchBbsMissions(cookie: String): BbsMissions? {
         return try {
-            val url = "${ApiConst.BBS_API}/apihub/wapi/getUserMissionsState?point_sn=myb"
+            val url = "${ApiConst.BBS_MISSIONS_URL}?point_sn=myb"
             val headers = mutableMapOf(
                 "Accept" to "application/json, text/plain, */*",
                 "User-Agent" to ApiConst.UA_WEB,
@@ -78,20 +81,14 @@ object MiyouApi {
                 "Cookie" to cookie
             )
             val resp = Http.get(url, headers)
-            val obj = org.json.JSONObject(resp.body)
-            if (obj.optInt("retcode", -1) != 0) return null
-            val states = obj.optJSONObject("data")?.optJSONArray("states") ?: return null
-            for (i in 0 until states.length()) {
-                val s = states.optJSONObject(i) ?: continue
-                if (s.optInt("mission_id", -1) == 58) {
-                    return s.optBoolean("is_get_award", false)
-                }
-            }
-            false
+            parseBbsMissions(resp.body)
         } catch (e: Exception) {
             null
         }
     }
+
+    /** 只关心"今天签到没有"的旧入口（社区签到状态显示用）。 */
+    fun fetchBbsSignedToday(cookie: String): Boolean? = fetchBbsMissions(cookie)?.signedToday
 
     /** 用已通过验证的 challenge 重试社区签到。 */
     fun signInWithChallenge(cookie: String, deviceId: String, deviceFp: String, challenge: String): SignResult {
@@ -423,18 +420,53 @@ object MiyouApi {
         validate: String? = null,
         seccode: String? = null
     ): LunaSignResult {
-        val body = JSONObject().apply {
-            put("act_id", ApiConst.GENSHIN_ACT_ID)
-            put("region", region)
-            put("uid", uid)
-        }.toString()
         val headers = lunaHeaders(cookie, deviceId)
-        if (!challenge.isNullOrBlank()) {
-            headers["x-rpc-challenge"] = challenge
-            headers["x-rpc-validate"] = validate ?: ""
-            headers["x-rpc-seccode"] = seccode ?: "${validate ?: ""}|jordan"
-        }
-        val resp = Http.post("${ApiConst.TAKUMI_API}/event/luna/sign", body, headers)
+        withCaptcha(headers, challenge, validate, seccode)
+        val resp = Http.post("${ApiConst.TAKUMI_API}/event/luna/sign", lunaSignBody(uid, region), headers)
         return parseLunaSign(resp.body)
+    }
+
+    /** 补签信息：本月漏签天数、补签次数上限、每次补签花多少米游币（只读，不发补签）。 */
+    fun fetchLunaResignInfo(cookie: String, deviceId: String, uid: String, region: String): LunaResignInfo {
+        val url = "${ApiConst.LUNA_RESIGN_INFO_URL}?lang=zh-cn&act_id=${ApiConst.GENSHIN_ACT_ID}&uid=$uid&region=$region"
+        val resp = Http.get(url, lunaHeaders(cookie, deviceId))
+        return parseLunaResignInfo(resp.body)
+    }
+
+    /**
+     * 原神每日签到**补签**：补上本月漏签的天数，会消耗米游币（数量见 resign_info.coin_cost）。
+     * 请求体与 /event/luna/sign 一致；遇到极验风控时同样用 x-rpc-challenge 重试。
+     */
+    fun resignLuna(
+        cookie: String,
+        deviceId: String,
+        uid: String,
+        region: String,
+        challenge: String? = null,
+        validate: String? = null,
+        seccode: String? = null
+    ): LunaSignResult {
+        val headers = lunaHeaders(cookie, deviceId)
+        withCaptcha(headers, challenge, validate, seccode)
+        val resp = Http.post(ApiConst.LUNA_RESIGN_URL, lunaSignBody(uid, region), headers)
+        return parseLunaSign(resp.body)
+    }
+
+    private fun lunaSignBody(uid: String, region: String): String = JSONObject().apply {
+        put("act_id", ApiConst.GENSHIN_ACT_ID)
+        put("region", region)
+        put("uid", uid)
+    }.toString()
+
+    private fun withCaptcha(
+        headers: MutableMap<String, String>,
+        challenge: String?,
+        validate: String?,
+        seccode: String?
+    ) {
+        if (challenge.isNullOrBlank()) return
+        headers["x-rpc-challenge"] = challenge
+        headers["x-rpc-validate"] = validate ?: ""
+        headers["x-rpc-seccode"] = seccode ?: "${validate ?: ""}|jordan"
     }
 }
