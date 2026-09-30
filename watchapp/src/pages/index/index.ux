@@ -378,9 +378,15 @@ export default {
     }
     if (!msg) return;
     if (msg.type === "dailyNote") {
-      this.statusColor = C.online;
       // 顶栏状态区宽度固定，文案要短（长文案会被裁掉）
-      this.statusText = "已同步 " + String(msg.date || "").slice(5);
+      if (msg.stale) {
+        // 手机端这次拉取失败，给的是上次同步的数据：如实说明，别让人以为是最新的
+        this.statusColor = C.offline;
+        this.statusText = "缓存 · 手机端未响应";
+      } else {
+        this.statusColor = C.online;
+        this.statusText = "已同步 " + String(msg.date || "").slice(5);
+      }
       this.saveCache(msg);
       this.renderNote(msg);
     } else if (msg.action === "getStorageInfo") {

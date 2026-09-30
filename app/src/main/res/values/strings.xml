@@ -105,7 +105,7 @@
     <string name="settings_github">GitHub</string>
     <string name="github_handle">having5548</string>
     <string name="settings_version">版本</string>
-    <string name="version_name">1.1.14</string>
+    <string name="version_name">1.1.15</string>
     <string name="disclaimer_title">免责声明</string>
 
     <string name="onboarding_title">使用前请仔细阅读</string>
@@ -254,9 +254,7 @@
     <string name="webview_open_browser">用浏览器打开</string>
     <string name="tools_record_risk">账号存在风险（5003），暂无战绩数据。可稍后重试，或先用下面的网页入口查看；本应用已按官方流程注册设备指纹，若持续出现请隔一段时间再试。</string>
 
-    <string name="settings_watch">手表同步</string>
     <string name="watch_title">手表同步</string>
-    <string name="watch_desc">右侧开关即同步总开关；点这里看连接状态、保活与便签推送</string>
 
     <!-- 手表同步二级页 -->
     <string name="watch_status_connected_fmt">已连接：%1$s</string>

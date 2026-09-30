@@ -6,8 +6,10 @@ package com.traveler.miyou.watch
 import android.content.Context
 import com.traveler.miyou.net.DeviceFp
 import com.traveler.miyou.net.MiyouApi
+import com.traveler.miyou.net.NetRetry
 import com.traveler.miyou.store.AccountStore
 import com.traveler.miyou.store.CookieStore
+import com.traveler.miyou.store.SettingsStore
 import com.xiaomi.xms.wearable.Wearable
 import com.xiaomi.xms.wearable.auth.Permission
 import com.xiaomi.xms.wearable.node.DataItem
@@ -18,6 +20,7 @@ import com.xiaomi.xms.wearable.tasks.Task
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -86,6 +89,13 @@ object WatchNoteSync {
     private var payloadCache: JSONObject? = null
     private var payloadCacheAt = 0L
     private const val PAYLOAD_TTL_MS = 60_000L
+
+    /**
+     * 上一次**真的拿到过数据**的载荷。
+     * 手机端在后台被系统限制联网时（DNS 解析失败 / 超时）本次会全部失败，
+     * 这时候宁可把手上的旧数据发给手表（标 stale），也只比屏幕上只剩一串英文报错好。
+     */
+    private var lastGoodPayload: JSONObject? = null
 
     private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { c ->
         addOnSuccessListener { if (c.isActive) c.resume(it) }
@@ -309,7 +319,11 @@ object WatchNoteSync {
                 json.optString("action") == "requestNote" -> {
                     scope.launch {
                         val ctx = appContext ?: return@launch
-                        // 手表主动拉取：用缓存载荷快速回发（缓存过期才重新拉接口）
+                        // 手表主动拉取：先把前台保活服务补起来 —— 没有前台服务时系统会限制后台联网，
+                        // 接口只会报 DNS 解析失败（Unable to resolve host ...），数据自然拿不到
+                        WatchSyncService.ensureRunning(ctx, SettingsStore(ctx).watchSyncEnabled)
+                        delay(300)
+                        // 缓存没过期就直接回缓存，否则重新拉接口（拉不动会用上次的好数据兜底）
                         runCatching { pushNote(ctx, forceRefresh = false) }
                     }
                 }
@@ -385,7 +399,23 @@ object WatchNoteSync {
             for (key in arrayOf("resin", "coin", "task", "sign")) {
                 p.optJSONObject(key)?.let { payload.put(key, it) }
             }
-            p.optString("error").takeIf { it.isNotBlank() }?.let { payload.put("noteError", it) }
+        }
+
+        // 有没有真的拿到数据？全失败时用上次的好数据兜底，避免手表上只剩报错
+        val hasData = (0 until arr.length()).any { i ->
+            arr.optJSONObject(i)?.optJSONObject("resin") != null
+        }
+        if (hasData) {
+            lastGoodPayload = payload
+        } else {
+            val good = lastGoodPayload
+            if (good != null) {
+                val fallback = JSONObject(good.toString())
+                fallback.put("stale", true)
+                fallback.put("noteError", "手机端暂时获取失败，显示上次同步的数据")
+                return fallback
+            }
+            primary?.optString("error")?.takeIf { it.isNotBlank() }?.let { payload.put("noteError", it) }
         }
         return payload
     }
@@ -413,14 +443,18 @@ object WatchNoteSync {
                 throw IllegalStateException("未绑定原神角色，请先在手机端首页刷新一次")
             }
 
-            // 签到状态：只读查询
-            val info = MiyouApi.fetchLunaInfo(store.cookieTokenCookieStr(), deviceId, uid, region)
+            // 签到状态：只读查询（手机端在后台/刚被唤醒时网络可能还没就绪，失败重试几次）
+            val info = NetRetry.withRetry {
+                MiyouApi.fetchLunaInfo(store.cookieTokenCookieStr(), deviceId, uid, region)
+            }
             val signedToday = info.message.isBlank() && info.isSign
             val signedDays = if (info.message.isBlank()) info.totalSignDay else 0
             entry.put("sign", JSONObject().put("today", signedToday).put("days", signedDays))
 
             // 实时便签（widget v2 / stoken 通道）
-            val resp = MiyouApi.fetchWidgetResin(store.stokenCookieStr(), deviceId, deviceFp)
+            val resp = NetRetry.withRetry {
+                MiyouApi.fetchWidgetResin(store.stokenCookieStr(), deviceId, deviceFp)
+            }
             val note = resp.note
             if (note != null) {
                 entry.put(
@@ -436,7 +470,8 @@ object WatchNoteSync {
                 entry.put("error", resp.message.ifBlank { "实时便签获取失败" })
             }
         } catch (e: Exception) {
-            entry.put("error", e.message ?: e.javaClass.simpleName)
+            // 网络类失败换成手表的短句，别把 "Unable to resolve host ..." 原样丢过去
+            entry.put("error", NetRetry.friendlyMessage(e))
         }
         return entry
     }

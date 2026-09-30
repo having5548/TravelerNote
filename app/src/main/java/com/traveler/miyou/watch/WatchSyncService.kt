@@ -67,6 +67,22 @@ class WatchSyncService : Service() {
             }
         }
 
+        /**
+         * 保证保活服务在跑：开关开着但服务没了就补起来，返回当前是否在跑。
+         *
+         * 手表来拉数据前会先调一次 —— 进程没有前台服务时，系统（尤其 MIUI）会限制后台联网，
+         * 接口只会报 `Unable to resolve host ...`，数据自然拿不到。
+         * 后台受限场景（Android 12+）startForegroundService 可能直接被拒，这里 runCatching 兜住。
+         */
+        fun ensureRunning(context: Context, syncEnabled: Boolean): Boolean {
+            if (running) return true
+            if (!syncEnabled) return false
+            return runCatching {
+                start(context)
+                true
+            }.getOrDefault(false)
+        }
+
         /** 是否已被系统允许后台运行（忽略电池优化）。没加白名单时清后台很容易被杀。 */
         fun ignoringBatteryOptimizations(context: Context): Boolean = runCatching {
             context.getSystemService(android.os.PowerManager::class.java)

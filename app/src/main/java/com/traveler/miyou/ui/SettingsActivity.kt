@@ -54,7 +54,7 @@ class SettingsActivity : AppCompatActivity() {
         buildThemeRow()
         setupBackground()
         setupBackgroundEffect()
-        setupWatchSync()
+        // 手表同步入口已从设置页删除（同步开关在「手表同步」页签里）
         // 设置页也应用同一份背景与材质，避免只有主界面"全屏"、进来就断掉；
         // 背景就绪后按它的明暗给工具栏（返回箭头/标题）选对比色
         BackgroundEngine.apply(this) { ThemeHelper.applyToolbarContent(this) }
@@ -236,22 +236,6 @@ class SettingsActivity : AppCompatActivity() {
     private fun updateEffectVisibility() {
         binding.frostSlider.visibility = if (settings.bgEffect == 1) View.VISIBLE else View.GONE
         binding.acrylicSlider.visibility = if (settings.bgEffect == 2) View.VISIBLE else View.GONE
-    }
-
-    // ---------------- 手表同步 ----------------
-
-    /**
-     * 设置列表里的手表同步行：**只作为入口**（同步开关已挪到手表同步页顶部，避免两处重复），
-     * 点整行回到主界面并切到「手表同步」页签。
-     */
-    private fun setupWatchSync() {
-        binding.watchEntryRow.setOnClickListener {
-            startActivity(
-                Intent(this, MainActivity::class.java)
-                    .putExtra(MainActivity.EXTRA_PAGE, MainActivity.PAGE_WATCH)
-                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            )
-        }
     }
 
     private fun updateCaptchaFieldsVisibility() {
