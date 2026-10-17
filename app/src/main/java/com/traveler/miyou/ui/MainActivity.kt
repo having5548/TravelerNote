@@ -70,6 +70,13 @@ class MainActivity : AppCompatActivity() {
         /** 从通知/设置页跳进来时指定落在哪一页（目前只有手表同步）。 */
         const val EXTRA_PAGE = "extra_page"
         const val PAGE_WATCH = "watch"
+
+        /**
+         * 洞天宝钱的**初始**上限。接口的 `max_home_coin` 只会报这个值（300），
+         * 而真实上限随洞天仙力升级变高（600/900/1200/…），所以拿它当上限会误报"已满"。
+         * 只有接口报出 >此值的上限时才认为它给了真实上限。
+         */
+        private const val HOME_COIN_BASE_CAP = 300
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -552,12 +559,17 @@ class MainActivity : AppCompatActivity() {
                             getColor(R.color.resin)
                         )
                     )
+                    // 洞天宝钱：接口的 max_home_coin 目前只给**初始**上限 300，升级洞天仙力后
+                    // 真实上限更高（300/600/900/1200/…）。所以只有接口确实报了 >300 的上限时
+                    // 才显示 "/max" 和"回满/已满"，否则只报当前数量——不能拿 300 当上限冤枉人。
+                    val coinCapKnown = note.maxHomeCoin > HOME_COIN_BASE_CAP
                     items.add(
                         HomeItem.Note(
                             R.drawable.ic_home_coin,
                             getString(R.string.home_coin),
-                            "${note.currentHomeCoin} / ${note.maxHomeCoin}",
-                            resinFullText(note.homeCoinRecoveryTime),
+                            if (coinCapKnown) "${note.currentHomeCoin} / ${note.maxHomeCoin}"
+                            else "${note.currentHomeCoin}",
+                            if (coinCapKnown) resinFullText(note.homeCoinRecoveryTime) else "",
                             getColor(R.color.coin)
                         )
                     )

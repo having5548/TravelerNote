@@ -21,3 +21,6 @@ watchapp/dist/
 watchapp/sign/
 .temp_watchapp/
 watchapp/build/
+
+# codegraph 索引库（几 MB 的 SQLite，按需本地重建）
+.codegraph/

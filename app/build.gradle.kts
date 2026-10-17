@@ -23,8 +23,8 @@ android {
         applicationId = "com.traveler.miyou"
         minSdk = 30
         targetSdk = 34
-        versionCode = 17
-        versionName = "1.1.15"
+        versionCode = 18
+        versionName = "1.1.16"
         vectorDrawables.useSupportLibrary = true
     }
 
