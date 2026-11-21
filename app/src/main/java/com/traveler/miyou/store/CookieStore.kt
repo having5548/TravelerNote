@@ -178,9 +178,50 @@ class CookieStore(context: Context, accountId: String? = null) {
     fun loginTicket(): String? = get("login_ticket")
     fun loginUid(): String? = get("login_uid")
 
+    /**
+     * 签到 / 社区接口可用的 Cookie 变体（按优先级，元素是「变体名 → Cookie 串」）。
+     *
+     * 米哈游这两组接口对登录态的接受面不一样：签到接口历史上吃 account_id+cookie_token，
+     * 社区接口吃 ltoken，而扫码/短信登录拿到的只有 stoken 体系。所以这里把手上有的都列出来，
+     * 由调用方逐个探一次（同一轮里只用第一个成功的，结果缓存进偏好）。
+     */
+    fun cookieCandidates(): List<Pair<String, String>> {
+        val list = mutableListOf<Pair<String, String>>()
+        val cookieTokenCookie = cookieTokenCookieStr()
+        if (cookieTokenCookie.isNotBlank()) list.add("cookie_token" to cookieTokenCookie)
+        val ltokenCookie = buildString {
+            ltuid()?.let { append("ltuid=").append(it) }
+            ltoken()?.let {
+                if (isNotEmpty()) append("; ")
+                append("ltoken=").append(it)
+            }
+        }
+        if (ltoken() != null || ltuid() != null) list.add("ltoken" to ltokenCookie)
+        val stokenCookie = stokenCookieStr()
+        if (stokenCookie.isNotBlank()) list.add("stoken" to stokenCookie)
+        val full = fullCookie()
+        if (full.isNotBlank() && list.none { it.second == full }) list.add("full" to full)
+        return list
+    }
+
+    /** 上次探明可用的签到 Cookie 变体名（cookie_token / ltoken / stoken / full）。 */
+    fun lunaCookieKind(): String? = get("luna_cookie_kind")
+
+    fun saveLunaCookieKind(kind: String) = put("luna_cookie_kind", kind)
+
+    /** 上次探明可用的社区 Cookie 变体名。 */
+    fun bbsCookieKind(): String? = get("bbs_cookie_kind")
+
+    fun saveBbsCookieKind(kind: String) = put("bbs_cookie_kind", kind)
+
+    /** 按变体名取出当前 Cookie；取不到返回空串。 */
+    fun cookieByKind(kind: String?): String {
+        if (kind.isNullOrBlank()) return ""
+        return cookieCandidates().firstOrNull { it.first == kind }?.second ?: ""
+    }
+
     /** 生成携带全部已归一化 token 的 Cookie 串。 */
-    fun fullCookie(): String {
-        val parts = mutableListOf<String>()
+    fun fullCookie(): String {        val parts = mutableListOf<String>()
         fun add(key: String, value: String?) {
             if (!value.isNullOrBlank()) parts.add("$key=$value")
         }
@@ -227,17 +268,38 @@ class CookieStore(context: Context, accountId: String? = null) {
         if (!curStoken.isNullOrBlank() && !curStuid.isNullOrBlank()) {
             val suid: String = curStuid!!
             val stk: String = curStoken!!
-            val info = MiyouApi.fetchCookieTokenByStoken(
-                suid, stk, curMid.orEmpty(), deviceId(), deviceFp()
+            val curMidStr: String = curMid.orEmpty()
+
+            // 新 Passport 交换接口（POST JSON）：stoken → cookie_token / ltoken
+            val nowCookie = MiyouApi.exchangeTokenByStoken(
+                stk, curMidStr, suid, deviceId(), deviceFp(), dstTokenType = 4
             )
-            if (info != null && info.cookieToken.isNotBlank()) {
-                put("cookie_token", info.cookieToken)
-                put("account_id", info.accountId.ifBlank { info.uid.ifBlank { suid } })
+            if (nowCookie != null && nowCookie.token.isNotBlank()) {
+                put("cookie_token", nowCookie.token)
+                put("account_id", nowCookie.aid.ifBlank { nowCookie.uid.ifBlank { suid } })
+            } else {
+                // 旧接口兜底（部分账号仍然只有这条路）
+                val info = MiyouApi.fetchCookieTokenByStoken(
+                    suid, stk, curMidStr, deviceId(), deviceFp()
+                )
+                if (info != null && info.cookieToken.isNotBlank()) {
+                    put("cookie_token", info.cookieToken)
+                    put("account_id", info.accountId.ifBlank { info.uid.ifBlank { suid } })
+                }
             }
-            val lt = MiyouApi.fetchLtokenByStoken(suid, stk, curMid.orEmpty(), deviceId(), deviceFp())
-            if (!lt.isNullOrBlank()) {
-                put("ltoken", lt)
-                if (ltuid().isNullOrBlank()) put("ltuid", suid)
+
+            val nowLtoken = MiyouApi.exchangeTokenByStoken(
+                stk, curMidStr, suid, deviceId(), deviceFp(), dstTokenType = 2
+            )
+            if (nowLtoken != null && nowLtoken.token.isNotBlank()) {
+                put("ltoken", nowLtoken.token)
+                if (ltuid().isNullOrBlank()) put("ltuid", nowLtoken.aid.ifBlank { suid })
+            } else {
+                val lt = MiyouApi.fetchLtokenByStoken(suid, stk, curMidStr, deviceId(), deviceFp())
+                if (!lt.isNullOrBlank()) {
+                    put("ltoken", lt)
+                    if (ltuid().isNullOrBlank()) put("ltuid", suid)
+                }
             }
         }
 

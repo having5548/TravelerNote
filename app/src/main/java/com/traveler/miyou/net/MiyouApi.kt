@@ -71,15 +71,15 @@ object MiyouApi {
      * 回包 data 里：`total_points` = 当前米游币，`already_received_points` = 今日已得，
      * `can_get_points` = 今日还能得（与胡桃工具箱/米游社客户端的口径一致）。
      */
-    fun fetchBbsMissions(cookie: String): BbsMissions? {
+    fun fetchBbsMissions(cookie: String, deviceId: String = ""): BbsMissions? {
         return try {
             val url = "${ApiConst.BBS_MISSIONS_URL}?point_sn=myb"
-            val headers = mutableMapOf(
-                "Accept" to "application/json, text/plain, */*",
-                "User-Agent" to ApiConst.UA_WEB,
-                "Referer" to ApiConst.WEBSTATIC,
-                "Cookie" to cookie
-            )
+            // 社区接口的现行口径（对齐胡桃重制版 Bbs/User/UserClient）：
+            // client_type 2 + 新版 K2 盐的 Gen1 签名 + 2.119.0 + 移动端 UA + bbs Referer，Cookie 用 stoken
+            val headers = baseHeaders(deviceId, "2", ApiConst.BBS_VERSION_CURRENT, ApiConst.UA_MOBILE_CURRENT)
+            headers["DS"] = DS.gen1(ApiConst.K2_SALT_CURRENT)
+            headers["Referer"] = ApiConst.BBS_REFERER
+            headers["Cookie"] = cookie
             val resp = Http.get(url, headers)
             parseBbsMissions(resp.body)
         } catch (e: Exception) {
@@ -129,27 +129,56 @@ object MiyouApi {
         return parseVerificationPass(resp.body)
     }
 
-    /** 备用：用 stoken 获取绑定的原神角色（cookie 方式拿不到时使用）。 */
-    fun fetchRolesByStoken(stokenCookie: String, deviceId: String): List<GameRole> {
-        val url = "${ApiConst.TAKUMI_API}/binding/api/getUserGameRolesByStoken"
-        val headers = baseHeaders(deviceId, "5", ApiConst.BBS_VERSION, ApiConst.UA_WEB)
+    /**
+     * 国服取角色的官方通道，对齐 Snap.Hutao.Remastered 的 BindingClient2.GetUserGameRolesBySTokenAsync：
+     * 主机 api-takumi.miyoushe.com、x-rpc-client_type: 2、DS1 + 新 K2 盐、Cookie 只带 stoken 体系、
+     * Referer 固定 https://app.mihoyo.com、UA 用桌面版 miHoYoBBS/2.119.0。
+     * 注意：该接口会连同星铁/绝区零的角色一起返回，必须按 game_biz 过滤。
+     */
+    fun fetchRolesByStokenResult(stokenCookie: String, deviceId: String, deviceFp: String): RolesResult {
+        val headers = baseHeaders(deviceId, "2", ApiConst.BBS_VERSION_CURRENT, ApiConst.UA_DESKTOP_CURRENT)
+        if (deviceFp.isNotBlank()) headers["x-rpc-device_fp"] = deviceFp
+        headers["DS"] = DS.gen1(ApiConst.K2_SALT_CURRENT)
+        headers["Referer"] = ApiConst.APP_REFERER
         headers["Cookie"] = stokenCookie
-        val resp = Http.get(url, headers)
-        return parseGameRoles(resp.body)
+        val resp = Http.get(ApiConst.GAME_ROLES_STOKEN_URL, headers)
+        return parseRolesResult(resp.body, onlyGenshin = true)
     }
 
+    /** 备用：用 stoken 获取绑定的原神角色（cookie 方式拿不到时使用）。 */
+    fun fetchRolesByStoken(stokenCookie: String, deviceId: String): List<GameRole> =
+        fetchRolesByStokenResult(stokenCookie, deviceId, "").roles
+
     /** 获取账号绑定的原神角色列表。 */
-    fun fetchRoles(cookie: String, deviceId: String): List<GameRole> {
-        val url = "${ApiConst.GAME_ROLES_URL}?game_biz=hk4e_cn"
-        val headers = baseHeaders(deviceId, "5", ApiConst.BBS_VERSION, ApiConst.UA_WEB)
-        headers["DS"] = DS.gen1(ApiConst.BBS_WEB_SALT)
-        headers["Referer"] = "https://act.mihoyo.com/"
-        headers["Origin"] = "https://act.mihoyo.com"
+    fun fetchRoles(cookie: String, deviceId: String): List<GameRole> = fetchRolesResult(cookie, deviceId).roles
+
+    /**
+     * 取角色并带回服务端 retcode/message。
+     * 2026-11 起该接口校验的是「4X 盐 + DS2 + x-rpc-client_type: 5」，
+     * 旧的「K2 盐 + DS1」会被判成「登录状态失效，请重新登录」（retcode -100），
+     * 而 UI 只会显示成「未获取到原神角色」，看起来像接口换了。
+     */
+    fun fetchRolesResult(cookie: String, deviceId: String): RolesResult {
+        val query = "game_biz=hk4e_cn"
+        val url = "${ApiConst.GAME_ROLES_URL}?$query"
+        val headers = baseHeaders(deviceId, "5", ApiConst.BBS_VERSION_CURRENT, ApiConst.UA_WEB_CURRENT)
+        headers["Referer"] = ApiConst.WEBSTATIC
+        headers["Origin"] = ApiConst.WEBSTATIC
         headers["x-rpc-channel"] = "miyousheluodi"
         headers["X-Requested-With"] = "com.mihoyo.hyperion"
         headers["Cookie"] = cookie
-        val resp = Http.get(url, headers)
-        return parseGameRoles(resp.body)
+
+        // 当前校验：4X 盐 + DS2
+        headers["DS"] = DS.gen2(ApiConst.X4_SALT, "", query)
+        val nowResult = parseRolesResult(Http.get(url, headers).body)
+        if (nowResult.ok) return nowResult
+
+        // 兼容旧校验：K2 盐 + DS1（灰度/老账号下旧签名仍可能通过）
+        headers["DS"] = DS.gen1(ApiConst.BBS_WEB_SALT)
+        val legacyResult = parseRolesResult(Http.get(url, headers).body)
+        if (legacyResult.ok) return legacyResult
+
+        return if (legacyResult.message.isNotBlank() && legacyResult.retcode == 0) legacyResult else nowResult
     }
 
     /** 用 login_ticket 换取多类型 token。 */
@@ -174,7 +203,9 @@ object MiyouApi {
     }
 
     /** 用 stoken 换取 ltoken。 */
-    fun fetchLtokenByStoken(stuid: String, stoken: String, mid: String, deviceId: String, deviceFp: String): String? {
+    fun fetchLtokenByStoken(
+        stuid: String, stoken: String, mid: String, deviceId: String, deviceFp: String
+    ): String? {
         val url = "${ApiConst.LTOKEN_URL}?stoken=${java.net.URLEncoder.encode(stoken, "UTF-8")}"
         val headers = passportTokenHeaders(stuid, stoken, mid, deviceId, deviceFp, clientType = "5")
         headers["DS"] = DS.gen2(ApiConst.X4_SALT, "", "stoken=$stoken")
@@ -185,6 +216,46 @@ object MiyouApi {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * 新的 Passport 交换接口：POST JSON 用 stoken 换 cookie_token（dstTokenType=4）或 ltoken（dstTokenType=2）。
+     *
+     * 旧的 GET 接口（getCookieAccountInfoBySToken / getLTokenBySToken）现在回 -464 / 1002，
+     * 换成这个接口是 Snap.Hutao.Remastered 现在的做法（account/ma-cn-session/app/exchange）。
+     */
+    fun exchangeTokenByStoken(
+        stoken: String,
+        mid: String,
+        aid: String,
+        deviceId: String,
+        deviceFp: String,
+        dstTokenType: Int
+    ): ExchangeToken? {
+        if (stoken.isBlank() || mid.isBlank()) return null
+        val body = "{\"dst_token_type\":" + dstTokenType +
+            ",\"src_token\":{\"token\":\"" + stoken + "\",\"token_type\":1}" +
+            ",\"mid\":\"" + mid + "\"}"
+        val headers = mutableMapOf<String, String>(
+            "User-Agent" to ApiConst.UA_MOBILE_ANDROID12,
+            "Accept" to "application/json",
+            "x-rpc-sys_version" to "12",
+            "x-rpc-lifecycle_id" to java.util.UUID.randomUUID().toString(),
+            "x-rpc-app_id" to ApiConst.APP_ID,
+            "x-rpc-app_version" to ApiConst.BBS_VERSION_CURRENT,
+            "x-rpc-client_type" to "2",
+            "x-rpc-device_id" to deviceId,
+            "x-rpc-device_name" to "",
+            "x-rpc-game_biz" to "bbs_cn",
+            "x-rpc-sdk_version" to ApiConst.PASSPORT_SDK_VERSION,
+            "x-rpc-account_version" to ApiConst.PASSPORT_SDK_VERSION,
+            "DS" to DS.gen2Text(ApiConst.PASSPORT_SALT, body, "")
+        )
+        if (deviceFp.isNotBlank()) {
+            headers["x-rpc-device_fp"] = java.net.URLEncoder.encode(deviceFp, "UTF-8")
+        }
+        val resp = Http.post(ApiConst.EXCHANGE_TOKEN_URL, body, headers)
+        return parseExchangeToken(resp.body)
     }
 
     private fun passportTokenHeaders(stuid: String, stoken: String, mid: String, deviceId: String, deviceFp: String, clientType: String): MutableMap<String, String> {
@@ -384,21 +455,55 @@ object MiyouApi {
 
     private fun lunaHeaders(cookie: String, deviceId: String): MutableMap<String, String> {
         // 胡桃工具箱风格：XRpc 头 + x-rpc-signgame + LK2 盐的 Gen1 签名
+        // 2025 下半年的口径：app_version 2.119.0 + 新 LK2 盐，旧盐会回 -100「请登录后重试」
         return mutableMapOf(
             "Accept" to "application/json",
-            "User-Agent" to ApiConst.UA_DESKTOP,
-            "x-rpc-app_version" to ApiConst.RECORD_VERSION,
+            "User-Agent" to ApiConst.UA_DESKTOP_CURRENT,
+            "x-rpc-app_version" to ApiConst.BBS_VERSION_CURRENT,
             "x-rpc-client_type" to "5",
             "x-rpc-device_id" to deviceId,
             "x-rpc-signgame" to "hk4e",
-            "DS" to DS.gen1(ApiConst.LK2_SALT),
+            "DS" to DS.gen1(ApiConst.LK2_SALT_CURRENT),
             "Cookie" to cookie
         )
     }
 
+    /**
+     * 逐个试候选 Cookie 查一次签到状态，返回第一个可用的。
+     * 查询是只读的，可以安全地探；探到就缓存变体名，下次直接命中。
+     */
+    fun pickLunaCookie(
+        candidates: List<Pair<String, String>>,
+        deviceId: String,
+        uid: String,
+        region: String
+    ): Pair<String, String>? {
+        for ((name, cookie) in candidates) {
+            val info = try {
+                fetchLunaInfo(cookie, deviceId, uid, region)
+            } catch (e: Exception) {
+                continue
+            }
+            if (info.message.isBlank()) return name to cookie
+        }
+        return null
+    }
+
+    /** 逐个试候选 Cookie 查一次米游币任务，返回第一个可用的。 */
+    fun pickBbsCookie(candidates: List<Pair<String, String>>, deviceId: String): Pair<String, String>? {
+        for ((name, cookie) in candidates) {
+            val missions = try {
+                fetchBbsMissions(cookie, deviceId)
+            } catch (e: Exception) {
+                continue
+            }
+            if (missions != null) return name to cookie
+        }
+        return null
+    }
+
     /** 查询原神每日签到状态（uid/region 必须与账号绑定一致）。 */
-    fun fetchLunaInfo(cookie: String, deviceId: String, uid: String, region: String): LunaInfo {
-        val url = "${ApiConst.TAKUMI_API}/event/luna/info?lang=zh-cn&act_id=${ApiConst.GENSHIN_ACT_ID}&uid=$uid&region=$region"
+    fun fetchLunaInfo(cookie: String, deviceId: String, uid: String, region: String): LunaInfo {        val url = "${ApiConst.TAKUMI_API}/event/luna/info?lang=zh-cn&act_id=${ApiConst.GENSHIN_ACT_ID}&uid=$uid&region=$region"
         val resp = Http.get(url, lunaHeaders(cookie, deviceId))
         return parseLunaInfo(resp.body)
     }

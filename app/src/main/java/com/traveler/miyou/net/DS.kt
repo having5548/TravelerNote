@@ -51,4 +51,15 @@ object DS {
         val check = md5("salt=$salt&t=$t&r=$r&b=$body&q=$query")
         return "$t,$r,$check"
     }
+
+    /**
+     * 第二代签名（r 用 6 位小写字母+数字，对应 Snap.Hutao 的 includeChars=true）。
+     * Passport 交换接口要求这种写法。
+     */
+    fun gen2Text(salt: String, body: String, query: String): String {
+        val t = (System.currentTimeMillis() / 1000).toString()
+        val r = randomText(6)
+        val check = md5("salt=$salt&t=$t&r=$r&b=$body&q=$query")
+        return "$t,$r,$check"
+    }
 }

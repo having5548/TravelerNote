@@ -1,6 +1,75 @@
 # 更新日志
 
-## v1.1.16 · versionCode 18（当前版本）
+## v1.1.17 · versionCode 19（当前版本）
+
+> **只更新手机端**（APK 1.1.17 / versionCode 19）。手表端无改动，继续用 1.1.15 的 rpk。
+
+### 一、修「未获取到原神角色」（米哈游收紧了角色接口的签名校验）
+
+- 现象：游戏签到、社区签到 / 米游币、我的角色 / 战绩 / 旅行日历、补签，**一起失效**，
+  手机端只报「未获取到原神角色」。这些功能全都要先靠 `binding/api/getUserGameRolesByCookie`
+  拿到 **UID + 区服**，角色拿不到，后面全线断掉
+- 排查：接口地址和 `act_id` 都没变（官方签到页仍在用 `e202311201442471` 与 `api-takumi.mihoyo.com`），
+  变的是**签名口径** —— 该接口现在校验 `x-rpc-client_type: 5` + **4X 盐** + **DS2**，
+  登录态要求 **LToken**；而旧代码发的是 **K2 盐 + DS1**，服务端直接回
+  `-100 登录状态失效，请重新登录`，被上层统一吞成了「未获取到原神角色」
+- 修法（对照 **胡桃重制版** `Snap.Hutao.Remastered` 的 `BindingClient2` 实现）：
+  - 胡桃对**国服**根本不用 cookie 接口，走的是 stoken：`api-takumi.miyoushe.com/binding/api/getUserGameRolesByStoken`
+    + `x-rpc-client_type: 2` + **Gen1 签名 + 新 K2 盐** + 客户端版本 `2.119.0` + Referer `https://app.mihoyo.com`；
+    cookie 接口只在**海外**分支里用。所以取角色的顺序改成 **先 stoken、再 cookie**
+  - **stoken 通道**：新主机 + `client_type 2` + DS1 + 新 K2 盐 `24cf11fb…` + 桌面 UA `miHoYoBBS/2.119.0`，
+    并按 `game_biz == hk4e_cn` 过滤 —— 这个接口会把星铁、绝区零的角色一起返回，不过滤会拿错 uid
+  - **cookie 通道**（没登录过 stoken 时兜底）：`client_type 5` + 4X 盐 + DS2，Referer 改回
+    `https://webstatic.mihoyo.com`，版本与 UA 同步升到 `2.119.0`
+  - 两边都不通时，再回退**旧口径**（K2 盐 + DS1）各试一次
+  - 客户端版本和盐必须**配套**：新 K2 盐只对 `2.119.0` 有效，所以盐、版本、UA 是一起改的
+  - 仍然失败时，界面显示**服务端真实原因**（`未获取到原神角色（错误码 -100：登录状态失效，请重新登录）`），
+    不再只有一句干巴巴的提示，方便下次排查
+- 如果你的账号仍然报错，把这句括号里的内容发我，就能直接定位是登录态过期还是签名又变了
+
+### 二、修「今日签到 -100」与米游币查不到（签到 / 社区接口的盐也一起换新了）
+
+- 现象（装上 1.1.17 第一个测试包之后）：角色已经能取到，实时便签（树脂 / 洞天宝钱 / 派遣 / 委托）全部正常，
+  但还剩两处失败：
+  - **今日签到**：「状态查询失败：retcode=-100 请登录后重试 (-100)」
+  - **米游币**：「暂时查不到，稍后重试」，余额显示 0
+- 原因：这两组接口同样要求「盐 + 客户端版本」配套，而代码里还是旧组合：
+  - 签到 `event/luna/info|sign|home|resign`：旧 LK2 盐 + `x-rpc-app_version 2.95.1`
+  - 社区 `apihub/wapi/getUserMissionsState`（米游币）：**连签名都没发**，只发了个裸 Cookie 和网页 UA
+- 修法（仍然对照胡桃重制版 `SignInClient` / `Bbs.UserClient`）：
+  - **签到**：`client_type 5` + `x-rpc-signgame: hk4e` + cookie_token 保持不变，
+    盐换成新 LK2 `8fb73233…`、版本与 UA 升到 `2.119.0`（Gen1 签名）
+  - **米游币**：`client_type 2` + **新 K2 盐**的 Gen1 签名 + `2.119.0` +
+    移动端 UA `Mozilla/5.0 (Linux; Android 15) Mobile miHoYoBBS/2.119.0` + Referer `https://bbs.mihoyo.com/`；
+    Cookie 改用 **stoken**（没有 stoken 时回退完整 Cookie）
+- 社区签到（「手动签到」按钮）那条链路这次没动：如果它也报错，把报错原文发我，把同一套新盐换上去即可
+
+### 三、签到 / 米游币还是失败的真因：拿登录态的接口换了
+
+- 现象：第二版装上后，角色、实时便签都正常，但**今日签到**仍报
+  「状态查询失败：retcode=-100 请登录后重试」，**米游币**仍「暂时查不到」
+- 排查（给它加了一份**接口诊断日志**，再通过 ADB 抓真机日志看请求头与回包）：
+  - 签到请求发出去的 `Cookie` **是空的** —— 因为扫码 / 短信登录只拿到 **stoken** 体系
+    （`stuid` / `stoken` / `mid` + `ltuid`），而签到接口只认 **cookie_token** 或 **ltoken**
+  - 于是用旧接口把 stoken 换成 cookie_token / ltoken：
+    `account/auth/api/getCookieAccountInfoBySToken?stoken=…` → `-464`
+    「请使用最新版本产品/链接…」，`getLTokenBySToken?stoken=…` → `1002`「系统请求失败」
+    —— 这两个 **GET 接口已经废弃**
+- 修法（对照胡桃重制版 `PassportClient`）：官方换成了新接口
+  - `POST https://passport-api.mihoyo.com/account/ma-cn-session/app/exchange`
+  - body：`{"dst_token_type": 4, "src_token": {"token": "<stoken>", "token_type": 1}, "mid": "<mid>"}`
+    （`dst_token_type` 4 = cookie_token、2 = ltoken）
+  - 签名：**DS2 + Passport 专用盐** `JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS`，
+    `r` 用 6 位小写字母数字，签的正是**发出去的那串 JSON**
+  - 头部：`x-rpc-app_id: bll8iq97cem8`、`x-rpc-app_version: 2.119.0`、`x-rpc-client_type: 2`、
+    `x-rpc-sdk_version` / `x-rpc-account_version: 2.44.0`、`x-rpc-sys_version: 12` + 移动端 UA
+  - 现在**每次刷新都会先补登录态**：先换 cookie_token（同时把 `account_id` 落库），再换 ltoken
+    （连 `ltuid` 一起写），旧 GET 接口留作兜底；换到的 Cookie 会参与后面
+    「哪份 Cookie 能用」的自动探测并缓存结果
+- 真机实测（ADB 直连手机）：两个交换都 `retcode 0`，随后
+  `event/luna/info` → `retcode 0`（已签 21 天），`getUserMissionsState` → `retcode 0`（米游币状态正常）
+
+## v1.1.16 · versionCode 18
 
 > **只更新手机端**（APK 1.1.16 / versionCode 18）。手表端这次没有任何改动，rpk 仍是 1.1.15
 > 那一份，不用重装；等手表端有改动时再把两边版本号一起对齐。

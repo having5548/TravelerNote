@@ -166,7 +166,31 @@ fun parseAigis(aigis: String): AigisInfo? {
     }
 }
 
-fun parseGameRoles(raw: String): List<GameRole> {
+/** 取角色结果：除了列表，还带回服务端 retcode/message，便于把真实原因显示给用户。 */
+data class RolesResult(val roles: List<GameRole>, val retcode: Int, val message: String) {
+    val ok: Boolean get() = retcode == 0
+}
+
+fun parseRolesResult(raw: String, onlyGenshin: Boolean = false): RolesResult {
+    var retcode = -1
+    var message = ""
+    val roles = try {
+        val obj = JSONObject(raw)
+        retcode = obj.optInt("retcode", -1)
+        message = obj.optString("message", "")
+        parseGameRoles(raw, onlyGenshin)
+    } catch (e: Exception) {
+        emptyList()
+    }
+    return RolesResult(roles, retcode, message)
+}
+
+/**
+ * 解析角色列表。
+ * [onlyGenshin] 为 true 时只保留原神（hk4e_cn / hk4e_global）——stoken 接口会连同星铁、绝区零
+ * 的角色一起返回，不过滤会把别的游戏 uid 当成原神 uid。
+ */
+fun parseGameRoles(raw: String, onlyGenshin: Boolean = false): List<GameRole> {
     return try {
         val obj = JSONObject(raw)
         if (obj.optInt("retcode", -1) != 0) return emptyList()
@@ -174,6 +198,10 @@ fun parseGameRoles(raw: String): List<GameRole> {
         val list = ArrayList<GameRole>(arr.length())
         for (i in 0 until arr.length()) {
             val it = arr.optJSONObject(i) ?: continue
+            if (onlyGenshin) {
+                val biz = it.optString("game_biz", "")
+                if (!biz.equals("hk4e_cn", true) && !biz.equals("hk4e_global", true)) continue
+            }
             list.add(
                 GameRole(
                     uid = it.optString("game_uid", ""),
@@ -295,6 +323,29 @@ fun parseCookieAccountInfo(raw: String): CookieAccountInfo? {
 }
 
 // 角色数据已改为官方战绩接口，见 net/Characters.kt
+
+/** 解析 account/ma-cn-session/app/exchange 回包：data.token.token + data.user_info.aid。 */
+data class ExchangeToken(val token: String, val tokenType: Int, val aid: String, val uid: String)
+
+fun parseExchangeToken(raw: String): ExchangeToken? {
+    return try {
+        val obj = JSONObject(raw)
+        if (obj.optInt("retcode", -1) != 0) return null
+        val d = obj.optJSONObject("data") ?: return null
+        val tokenObj = d.optJSONObject("token") ?: return null
+        val token = tokenObj.optString("token", "")
+        if (token.isBlank()) return null
+        val user = d.optJSONObject("user_info")
+        ExchangeToken(
+            token = token,
+            tokenType = tokenObj.optInt("token_type", 0),
+            aid = user?.optString("aid", "").orEmpty(),
+            uid = user?.optString("uid", "").orEmpty()
+        )
+    } catch (e: Exception) {
+        null
+    }
+}
 
 // ---------- 原神游戏每日签到（luna） ----------
 

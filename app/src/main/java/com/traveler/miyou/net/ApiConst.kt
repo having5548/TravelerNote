@@ -32,8 +32,32 @@ object ApiConst {
     val APP_SALT: String = d("ZERJUUhiS09kYVBhTHV2UUtWelV6cWRlQ2F4anRhUFY=")
     val LK2_SALT: String = d("c2lkUUZFZ2xhakV6N0ZBMEFqN0hRUFY4OHpwZjE3U08=")
 
+    /**
+     * 国服新 K2 盐，必须与 [BBS_VERSION_CURRENT] 配套使用。
+     * 2025 年下半年起取角色（stoken 通道）按 Gen1 + 这个盐校验签名，旧盐会直接回 retcode -100
+     * 「登录状态失效，请重新登录」。来源：Snap.Hutao.Remastered 的 SaltConstants.CNK2。
+     */
+    const val K2_SALT_CURRENT = "24cf11fb14a84f0683e7cadf7c788ba2"
+
+    /**
+     * 国服新 LK2 盐（client_type 5，签到类接口专用），与 [BBS_VERSION_CURRENT] 配套。
+     * 旧 LK2 盐现在会让 event/luna 系列接口回 retcode -100「请登录后重试」。
+     * 来源：Snap.Hutao.Remastered 的 SaltConstants.CNLK2。
+     */
+    const val LK2_SALT_CURRENT = "8fb73233f73e200aa1f818b5705d4442"
+
+    /**
+     * Passport 交换接口（stoken → cookie_token / ltoken）专用盐，配 Gen2 签名。
+     * 来源：Snap.Hutao.Remastered 的 SaltConstants.PASSPORT / HoyolabOptions.Salts[Passport]。
+     */
+    const val PASSPORT_SALT = "JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS"
+
+    /** Passport 客户端版本号，交换接口要带 x-rpc-sdk_version / x-rpc-account_version。 */
+    const val PASSPORT_SDK_VERSION = "2.44.0"
+
     // 客户端版本
     const val BBS_VERSION = "2.106.2"
+    const val BBS_VERSION_CURRENT = "2.119.0"
     const val PASSPORT_APP_VERSION = "2.90.1"
     const val RECORD_VERSION = "2.95.1"
     const val GENSHIN_ACT_ID = "e202311201442471"
@@ -52,9 +76,15 @@ object ApiConst {
     val LUNA_RESIGN_INFO_URL: String get() = "$TAKUMI_API/event/luna/resign_info"
     val LUNA_RESIGN_URL: String get() = "$TAKUMI_API/event/luna/resign"
     val GAME_ROLES_URL: String get() = "$TAKUMI_API/binding/api/getUserGameRolesByCookie"
+
+    /** stoken 取角色走的是另一个主机（api-takumi.miyoushe.com）。 */
+    val GAME_ROLES_STOKEN_URL: String get() = "https://api-takumi.miyoushe.com/binding/api/getUserGameRolesByStoken"
     val MULTI_TOKEN_URL: String get() = "$TAKUMI_API/auth/api/getMultiTokenByLoginTicket"
     val COOKIE_TOKEN_URL: String get() = "$PASSPORT_API/account/auth/api/getCookieAccountInfoBySToken"
     val LTOKEN_URL: String get() = "$PASSPORT_API/account/auth/api/getLTokenBySToken"
+
+    /** 新的 Passport 交换接口：POST JSON 换 cookie_token / ltoken（旧的 GET 接口已废弃）。 */
+    val EXCHANGE_TOKEN_URL: String get() = "$PASSPORT_API/account/ma-cn-session/app/exchange"
 
     val QR_FETCH_URL: String get() = "$PASSPORT_API/account/ma-cn-passport/app/createQRLogin"
     val QR_QUERY_URL: String get() = "$PASSPORT_API/account/ma-cn-passport/app/queryQRLoginStatus"
@@ -129,4 +159,21 @@ object ApiConst {
         "Mozilla/5.0 miHoYoBBS/$PASSPORT_APP_VERSION Capture/2.2.0"
     val UA_DESKTOP: String get() =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) miHoYoBBS/$BBS_VERSION"
+    val UA_WEB_CURRENT: String get() =
+        "Mozilla/5.0 (Linux; Android 12; Unspecified Device) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Version/4.0 Chrome/103.0.5060.129 Mobile Safari/537.36 " +
+            "miHoYoBBS/$BBS_VERSION_CURRENT"
+    val UA_DESKTOP_CURRENT: String get() =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) miHoYoBBS/$BBS_VERSION_CURRENT"
+
+    /** 社区（米游社）App 版 UA，client_type 2 的接口用，与 [BBS_VERSION_CURRENT] 配套。 */
+    val UA_MOBILE_CURRENT: String get() =
+        "Mozilla/5.0 (Linux; Android 15) Mobile miHoYoBBS/$BBS_VERSION_CURRENT"
+
+    /** Passport 交换接口用的 App 版 UA（Android 12，与 x-rpc-sys_version 一致）。 */
+    val UA_MOBILE_ANDROID12: String get() =
+        "Mozilla/5.0 (Linux; Android 12) Mobile miHoYoBBS/$BBS_VERSION_CURRENT"
+
+    /** 社区接口的 Referer（client_type 2）。 */
+    const val BBS_REFERER = "https://bbs.mihoyo.com/"
 }

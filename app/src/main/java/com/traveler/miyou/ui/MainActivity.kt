@@ -21,6 +21,7 @@ import com.traveler.miyou.databinding.ItemCharacterBinding
 import com.traveler.miyou.net.ApiConst
 import com.traveler.miyou.net.BackgroundEngine
 import com.traveler.miyou.net.CaptchaSolver
+import com.traveler.miyou.net.Http
 import com.traveler.miyou.net.ImageLoader
 import com.traveler.miyou.net.MiyouApi
 import com.traveler.miyou.store.CookieStore
@@ -128,6 +129,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
+        Http.diagDir = java.io.File(getExternalFilesDir(null), "diag")
         ThemeHelper.apply(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -445,28 +447,55 @@ class MainActivity : AppCompatActivity() {
                 val deviceFp = store.deviceFp()
                 val fullCookie = store.fullCookie()
 
-                // 每次签到前重新拉取原神角色，避免使用过期/串号的角色信息（retcode 10002）
-                var roles = withContext(Dispatchers.IO) {
-                    MiyouApi.fetchRoles(fullCookie, deviceId)
-                }
-                if (roles.isEmpty()) {
-                    roles = withContext(Dispatchers.IO) {
-                        MiyouApi.fetchRolesByStoken(store.stokenCookieStr(), deviceId)
+                // 国服取角色的官方通道是 stoken（cookie_token 通道会回 -100「登录状态失效」），
+                // 所以先走 stoken，失败再退回 cookie 通道。见 MiyouApi.fetchRolesByStokenResult。
+                val roleStokenCookie = store.stokenCookieStr()
+                var roleErr = ""
+                var roles: List<com.traveler.miyou.net.GameRole> = emptyList()
+                if (roleStokenCookie.isNotBlank()) {
+                    val byStoken = withContext(Dispatchers.IO) {
+                        MiyouApi.fetchRolesByStokenResult(roleStokenCookie, deviceId, deviceFp)
                     }
+                    roles = byStoken.roles
+                    roleErr = describeRolesError(byStoken)
                 }
                 if (roles.isEmpty()) {
-                    // 登录态可能过期，刷新 cookie 后重试一次
+                    val byCookie = withContext(Dispatchers.IO) {
+                        MiyouApi.fetchRolesResult(fullCookie, deviceId)
+                    }
+                    roles = byCookie.roles
+                    if (byCookie.retcode != 0 || roleErr.isBlank()) roleErr = describeRolesError(byCookie)
+                }
+                if (roles.isEmpty()) {
+                    // 登录态可能过期，刷新 cookie 后重试一次（同样先 stoken 后 cookie）
                     withContext(Dispatchers.IO) {
                         try {
                             store.normalize()
                         } catch (_: Exception) {
                         }
                     }
-                    roles = withContext(Dispatchers.IO) {
-                        MiyouApi.fetchRoles(store.fullCookie(), deviceId)
+                    val retryStoken = store.stokenCookieStr()
+                    val byStokenRetry = if (retryStoken.isNotBlank()) {
+                        withContext(Dispatchers.IO) {
+                            MiyouApi.fetchRolesByStokenResult(retryStoken, deviceId, deviceFp)
+                        }
+                    } else {
+                        null
+                    }
+                    if (byStokenRetry != null && byStokenRetry.roles.isNotEmpty()) {
+                        roles = byStokenRetry.roles
+                    } else {
+                        val byCookieRetry = withContext(Dispatchers.IO) {
+                            MiyouApi.fetchRolesResult(store.fullCookie(), deviceId)
+                        }
+                        roles = byCookieRetry.roles
+                        if (byCookieRetry.retcode != 0) roleErr = describeRolesError(byCookieRetry)
                     }
                 }
                 val role = roles.firstOrNull()
+
+                // 签到接口的登录态口径和社区接口不同：先探出能用的那份 Cookie（变体名会长驻缓存）
+                val lunaCookie = if (role == null) "" else withContext(Dispatchers.IO) { lunaCookieFor(role.uid, role.region) }
 
                 // 旅行日历要用到的本月签到进度
                 var signedDays = 0
@@ -474,12 +503,16 @@ class MainActivity : AppCompatActivity() {
 
                 var lunaText: String
                 if (role == null) {
-                    lunaText = "未获取到原神角色，请重新登录"
+                    lunaText = if (roleErr.isBlank()) {
+                        "未获取到原神角色，请重新登录"
+                    } else {
+                        "未获取到原神角色（$roleErr）"
+                    }
                 } else {
                     store.saveRole(role.uid, role.region, role.nickname)
 
                     var info = withContext(Dispatchers.IO) {
-                        MiyouApi.fetchLunaInfo(store.cookieTokenCookieStr(), deviceId, role.uid, role.region)
+                        MiyouApi.fetchLunaInfo(lunaCookie, deviceId, role.uid, role.region)
                     }
                     if (info.message.isBlank()) {
                         signedDays = info.totalSignDay
@@ -493,7 +526,7 @@ class MainActivity : AppCompatActivity() {
                         lunaText = "需先在游戏内手动签到一次"
                     } else {
                         var r = withContext(Dispatchers.IO) {
-                            MiyouApi.signLuna(store.cookieTokenCookieStr(), deviceId, role.uid, role.region)
+                            MiyouApi.signLuna(lunaCookie, deviceId, role.uid, role.region)
                         }
                         if (r.needCaptcha) {
                             // 先试「无感验证」：设置里开启且配置了 https 打码接口时自动识别
@@ -503,7 +536,7 @@ class MainActivity : AppCompatActivity() {
                             if (solved != null) {
                                 r = withContext(Dispatchers.IO) {
                                     MiyouApi.signLuna(
-                                        store.cookieTokenCookieStr(), deviceId, role.uid, role.region,
+                                        lunaCookie, deviceId, role.uid, role.region,
                                         solved.challenge, solved.validate, "${solved.validate}|jordan"
                                     )
                                 }
@@ -514,7 +547,7 @@ class MainActivity : AppCompatActivity() {
                                 val cap = raw?.let { extractCaptcha(it, r.challenge) }
                                 if (cap != null) {
                                     r = withContext(Dispatchers.IO) {
-                                        MiyouApi.signLuna(store.cookieTokenCookieStr(), deviceId, role.uid, role.region, cap.challenge, cap.validate, cap.seccode)
+                                        MiyouApi.signLuna(lunaCookie, deviceId, role.uid, role.region, cap.challenge, cap.validate, cap.seccode)
                                     }
                                 }
                             }
@@ -524,7 +557,7 @@ class MainActivity : AppCompatActivity() {
                             val other = roles[1]
                             store.saveRole(other.uid, other.region, other.nickname)
                             r = withContext(Dispatchers.IO) {
-                                MiyouApi.signLuna(store.cookieTokenCookieStr(), deviceId, other.uid, other.region)
+                                MiyouApi.signLuna(lunaCookie, deviceId, other.uid, other.region)
                             }
                         }
                         lunaText = when {
@@ -537,7 +570,7 @@ class MainActivity : AppCompatActivity() {
 
                 // 旅行日历：本月每天的签到奖励（按"第几天"顺序）
                 val lunaHome = withContext(Dispatchers.IO) {
-                    MiyouApi.fetchLunaHome(store.cookieTokenCookieStr(), deviceId)
+                    MiyouApi.fetchLunaHome(lunaCookie, deviceId)
                 }
 
                 // 实时数据（widget v2 / stoken 通道）：树脂+洞天宝钱+派遣+委托
@@ -620,7 +653,7 @@ class MainActivity : AppCompatActivity() {
                     null
                 } else {
                     withContext(Dispatchers.IO) {
-                        MiyouApi.fetchLunaResignInfo(store.cookieTokenCookieStr(), deviceId, role.uid, role.region)
+                        MiyouApi.fetchLunaResignInfo(lunaCookie, deviceId, role.uid, role.region)
                     }
                 }
                 lastResignInfo = resignInfo
@@ -645,7 +678,8 @@ class MainActivity : AppCompatActivity() {
 
                 // 社区签到这里只查状态，绝不自动签（社区签到必须手动点按钮）；
                 // 同一个回包顺带给出米游币余额（total_points）与今日收支，显示在社区签到下方
-                val bbs = withContext(Dispatchers.IO) { MiyouApi.fetchBbsMissions(fullCookie) }
+                // 社区接口的登录态口径（cookie_token / ltoken / stoken 都试一遍，成功的那份缓存下来）
+                val bbs = withContext(Dispatchers.IO) { MiyouApi.fetchBbsMissions(bbsCookieFor(), deviceId) }
                 adapter.setCommunityStatus(
                     when (bbs?.signedToday) {
                         true -> getString(R.string.community_sign_done)
@@ -684,6 +718,51 @@ class MainActivity : AppCompatActivity() {
         val m = (seconds % 3600) / 60
         val human = if (h > 0) "${h}小时${m}分" else "${m}分钟"
         return "${getString(R.string.resin_full_at)} $fmt（约${human}后）"
+    }
+
+    /** 把「拿不到角色」的真实原因拼成一句给用户看的话（服务端 retcode + message）。 */
+    /**
+     * 签到接口该用哪份 Cookie。
+     *
+     * 扫码 / 短信登录只拿到 stoken 体系，而签到接口更认 account_id+cookie_token、其次 ltoken。
+     * 先试上次探明的那份，不行就按 [CookieStore.cookieCandidates] 顺序各只读查一次，
+     * 把成功的变体名缓存下来，后续直接命中。
+     */
+    private fun lunaCookieFor(uid: String, region: String): String {
+        val deviceId = store.deviceId()
+        val saved = store.cookieByKind(store.lunaCookieKind())
+        if (saved.isNotBlank()) {
+            val probe = runCatching { MiyouApi.fetchLunaInfo(saved, deviceId, uid, region) }.getOrNull()
+            if (probe != null && probe.message.isBlank()) return saved
+        }
+        val picked = runCatching { MiyouApi.pickLunaCookie(store.cookieCandidates(), deviceId, uid, region) }.getOrNull()
+        if (picked != null) {
+            store.saveLunaCookieKind(picked.first)
+            return picked.second
+        }
+        return store.cookieTokenCookieStr().ifBlank { store.stokenCookieStr() }
+    }
+
+    /** 社区（米游币）接口该用哪份 Cookie，逻辑同上。 */
+    private fun bbsCookieFor(): String {
+        val deviceId = store.deviceId()
+        val saved = store.cookieByKind(store.bbsCookieKind())
+        if (saved.isNotBlank()) {
+            val probe = runCatching { MiyouApi.fetchBbsMissions(saved, deviceId) }.getOrNull()
+            if (probe != null) return saved
+        }
+        val picked = runCatching { MiyouApi.pickBbsCookie(store.cookieCandidates(), deviceId) }.getOrNull()
+        if (picked != null) {
+            store.saveBbsCookieKind(picked.first)
+            return picked.second
+        }
+        return store.stokenCookieStr().ifBlank { store.fullCookie() }
+    }
+
+    private fun describeRolesError(r: com.traveler.miyou.net.RolesResult): String = when {
+        r.retcode == 0 -> ""
+        r.message.isNotBlank() -> "错误码 ${r.retcode}：${r.message}"
+        else -> "错误码 ${r.retcode}"
     }
 
     private fun extractCaptcha(raw: String, fallbackChallenge: String): CaptchaTriple? {
@@ -792,8 +871,9 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             var result: com.traveler.miyou.net.LunaSignResult? = null
             try {
+                val resignCookie = withContext(Dispatchers.IO) { lunaCookieFor(role.uid, role.region) }
                 var r = withContext(Dispatchers.IO) {
-                    MiyouApi.resignLuna(store.cookieTokenCookieStr(), store.deviceId(), role.uid, role.region)
+                    MiyouApi.resignLuna(resignCookie, store.deviceId(), role.uid, role.region)
                 }
                 if (r.needCaptcha) {
                     // 无感打码优先（在 IO 线程）
@@ -803,7 +883,7 @@ class MainActivity : AppCompatActivity() {
                     if (solved != null) {
                         r = withContext(Dispatchers.IO) {
                             MiyouApi.resignLuna(
-                                store.cookieTokenCookieStr(), store.deviceId(), role.uid, role.region,
+                                resignCookie, store.deviceId(), role.uid, role.region,
                                 solved.challenge, solved.validate, "${solved.validate}|jordan"
                             )
                         }
@@ -815,7 +895,7 @@ class MainActivity : AppCompatActivity() {
                         if (cap != null) {
                             r = withContext(Dispatchers.IO) {
                                 MiyouApi.resignLuna(
-                                    store.cookieTokenCookieStr(), store.deviceId(), role.uid, role.region,
+                                    resignCookie, store.deviceId(), role.uid, role.region,
                                     cap.challenge, cap.validate, cap.seccode
                                 )
                             }
